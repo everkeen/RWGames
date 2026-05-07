@@ -1,0 +1,20 @@
+{
+  "name": "rwgames",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "predeploy": "npm run build",
+    "dev": "npm run build % npm run dbgserve",
+    "deploy": "npm run predeploy && gh-pages -d dist",
+    "dbgserve": "http-server dist -p 8080",
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "gh-pages": "^6.3.0",
+    "typescript": "^6.0.3"
+  }
+}
