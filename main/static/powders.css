@@ -1,0 +1,43 @@
+.type-button {
+    /* Basic styling for the type selection buttons */
+    display: inline-block;
+    padding: 5px 10px;
+    margin: 2px;
+    background-color: #eee;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.types-list {
+    /* Container for the type selection buttons */
+    margin: 10px;
+    padding: 0;
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    list-style: none;
+}
+
+.types-list .type-button {
+    margin: 5px;
+    border-radius: 0;
+    border-color: #eee;
+}
+
+.canvas-aspect {
+    aspect-ratio: 75 / 56;
+}
+
+.category-button {
+    /* Styling for category buttons */
+    border: 1px solid #eee;
+}
+
+.category-type-list {
+    overflow: auto;
+}
+
+.category-type-list li {
+    float: left;
+}

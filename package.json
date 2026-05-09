@@ -5,16 +5,18 @@
   "main": "index.js",
   "scripts": {
     "predeploy": "npm run build",
-    "dev": "npm run build % npm run dbgserve",
+    "dev": "npm run build && npm run dbgserve",
     "deploy": "npm run predeploy && gh-pages -d dist",
-    "dbgserve": "http-server dist -p 8080",
+    "dbgserve": "npx http-server main -p 8080 -c-1",
     "build": "tsc"
   },
+  "homepage": "https://everkeen.github.io/RWGames/",
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "gh-pages": "^6.3.0",
+    "http-server": "^14.1.1",
     "typescript": "^6.0.3"
   }
 }

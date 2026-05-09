@@ -1,0 +1,45 @@
+.games-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    padding: 20px;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: #17171a;
+    color: #eee;
+}
+
+.game-canvas-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 80vh;
+    width: 100vw;
+}
+
+.game-canvas {
+    height: 80%;
+    background-color: #000000;
+    border-radius: 8px;
+    justify-self: center;
+}
+
+.pixel-image {
+    image-rendering: pixelated;
+}
+
+.hidden {
+    display: none;
+}
+
+.text-button {
+    /* Button with no button styling, just clickable text */
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
