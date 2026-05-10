@@ -656,6 +656,7 @@ export class Powders {
     keysDown: Set<string> = new Set();
     debugRenderShapesInput: HTMLInputElement
     doDebugRender: boolean = false;
+    disableAi: boolean = false; // Preformance option to disable AI
     debugRenderShapes: { x: number; y: number; width: number; height: number; color: string; forTick: boolean }[] = [];
 
     constructor() {
@@ -678,12 +679,16 @@ export class Powders {
         this.debugRenderShapes.push({ x, y, width, height, color, forTick });
     }
 
-    public processTypeId(typeId: string | null): (string | null)[] {
+    public processTypeId(typeId: string | null, original: string | null = null, placeholderIndex: Map<string, string | null> = new Map(), single: boolean = false): (string | null)[] | (string | null) {
         const types: (string | null)[] = [];
         if (typeId === null) {
             return [null];
         }
+        placeholderIndex.set("original", original);
         if (typeId.startsWith("#")) {
+            if (single) {
+                throw new Error("Cannot use tag typeId with single=true");
+            }
             const tag = typeId.substring(1);
             const taggedTypes = powderTypes.getAllWithTag(tag);
             for (const type of taggedTypes) {
@@ -692,10 +697,19 @@ export class Powders {
                     types.push(id);
                 }
             }
+        } else if (typeId.startsWith("!")) {
+            const placeholder = typeId.substring(1);
+            const placeholderValue = placeholderIndex.get(placeholder);
+            if (placeholderValue === undefined) {
+                throw new Error(`Placeholder "${placeholder}" not found in index.`);
+            }
+            types.push(placeholderValue);
+        } else if (typeId === "$none") { // dollar sign for special values that cant be defined with an ID
+            types.push(null);
         } else {
             types.push(typeId);
         }
-        return types;
+        return single ? types[0]! : types;
     }
 
     public isFree(x: number, y: number): boolean {
@@ -877,6 +891,21 @@ export class Powders {
         (this.tmpGrid || this.grid)[y2]![x2]!.y = y2;
     }
 
+    public raycast(x: number, y: number, angle: number, maxDist?: number): { x: number; y: number; particle: Particle | null } {
+        if (maxDist === undefined) {
+            maxDist = Math.ceil(Math.sqrt((this.width * this.width) + (this.height * this.height)));
+        }
+        const endX = x + Math.cos(angle) * maxDist;
+        const endY = y + Math.sin(angle) * maxDist;
+        const particlesInLine = this.getParticlesInLine(x, y, endX, endY);
+        for (const particle of particlesInLine) {
+            if (particle.type !== null) {
+                return { x: particle.x, y: particle.y, particle };
+            }
+        }
+        return { x: endX, y: endY, particle: null };
+    }
+
     public update() {
         this.debugRenderShapes = this.debugRenderShapes.filter(shape => !shape.forTick);
         this.tmpGrid = [];
@@ -900,7 +929,7 @@ export class Powders {
                     type.behavior(this, particle);
                     for (const reaction of type.reactions || []) {
                         if (Math.random() < reaction.chance) {
-                            const allReactionTypes = this.processTypeId(reaction.with);
+                            const allReactionTypes = this.processTypeId(reaction.with) as (string | null)[];
                             let otherParticle: Particle | null = null;
                             for (const type of allReactionTypes) {
                                 if (type === null) {
@@ -913,12 +942,15 @@ export class Powders {
                                 if (reaction.behavior) {
                                     reaction.behavior(this, particle, otherParticle);
                                 } else {
+                                    const newResult = this.processTypeId(reaction.result, particle.type, new Map(), true) as string | null;
                                     // Default reaction behavior: spawn result at the location of the first particle and destroy the second
-                                    this.spawnParticle(particle.x, particle.y, reaction.result, true);
+                                    this.spawnParticle(particle.x, particle.y, newResult, true);
                                     if (reaction.secondResult) {
-                                        this.spawnParticle(otherParticle.x, otherParticle.y, reaction.secondResult, true);
+                                        const secondResult = this.processTypeId(reaction.secondResult, otherParticle.type, new Map(), true) as string | null;
+                                        this.spawnParticle(otherParticle.x, otherParticle.y, secondResult, true);
+                                    } else {
+                                        this.spawnParticle(otherParticle.x, otherParticle.y, null, true);
                                     }
-                                    this.spawnParticle(otherParticle.x, otherParticle.y, null, true);
                                 }
                             }
                         }
@@ -1716,11 +1748,13 @@ function creatureDefaultBehaviors(game: Powders, particle: Particle) {
             break;
         }
     }
-    if (particle.bvs4 <= 0) {
-        // Died to hunger.
-        game.spawnParticle(particle.x, particle.y, "blood", true);
-    } else {
-        particle.bvs4--; // Decrease hunger timer each tick, when it reaches 0 the creature dies of hunger
+    if (!game.disableAi) { // Disable hunger if disabling AI
+        if (particle.bvs4 <= 0) {
+            // Died to hunger.
+            game.spawnParticle(particle.x, particle.y, "blood", true);
+        } else {
+            particle.bvs4--; // Decrease hunger timer each tick, when it reaches 0 the creature dies of hunger
+        }
     }
 }
 
@@ -1812,35 +1846,37 @@ function landCreatureBehavior(game: Powders, particle: Particle) {
     } else {
         // Simple land creature behavior, moves randomly left or right, sometimes jumping.
         let moveDirectionX = n101random(); // Set to false to lower movement chance.
-        // Check view for POIs
-
-        const poiResult = creaturePoiCheck(game, particle, viewDistanceX, viewDistanceY);
-        const dangerNearby = poiResult.typeFound === "poi_danger";
-        const foodNearby = poiResult.typeFound === "poi_food";
-        let directionX = poiResult.directionX;
-        const directionY = poiResult.directionY;
         let doJump = false;
+        if (!game.disableAi) {
+            // Check view for POIs
 
-        // If danger is nearby, "panic" (try to move away)
-        if (dangerNearby) {
-            if (directionX === 0) {
-                directionX = n101random() || 1; // If danger is only vertical, pick a random horizontal direction to move away
-            }
-            if (directionY > 0) {
-                doJump = true; // If danger is below, try jumping to get away
-            }
-            particle.bvs1 = directionX; // Store the danger direction in behavior value 1 to run
-            particle.bvs2 = 5; // Continue running away for 5 ticks
-            moveDirectionX = -directionX; // Move in the opposite direction of the danger
-        } else if (foodNearby && particle.bvs4 < 80) { // If food is nearby and hunger is below 80, try to move towards it
-            if (poiResult.isAdjacent) {
-                creatureEatParticle(game, particle); // If the food is adjacent, eat it instead of moving
-            } else {
-                if (directionY < 0) {
-                    doJump = true; // If food is above, try jumping to reach it
+            const poiResult = creaturePoiCheck(game, particle, viewDistanceX, viewDistanceY);
+            const dangerNearby = poiResult.typeFound === "poi_danger";
+            const foodNearby = poiResult.typeFound === "poi_food";
+            let directionX = poiResult.directionX;
+            const directionY = poiResult.directionY;
+
+            // If danger is nearby, "panic" (try to move away)
+            if (dangerNearby) {
+                if (directionX === 0) {
+                    directionX = n101random() || 1; // If danger is only vertical, pick a random horizontal direction to move away
                 }
+                if (directionY > 0) {
+                    doJump = true; // If danger is below, try jumping to get away
+                }
+                particle.bvs1 = directionX; // Store the danger direction in behavior value 1 to run
+                particle.bvs2 = 5; // Continue running away for 5 ticks
+                moveDirectionX = -directionX; // Move in the opposite direction of the danger
+            } else if (foodNearby && particle.bvs4 < 80) { // If food is nearby and hunger is below 80, try to move towards it
+                if (poiResult.isAdjacent) {
+                    creatureEatParticle(game, particle); // If the food is adjacent, eat it instead of moving
+                } else {
+                    if (directionY < 0) {
+                        doJump = true; // If food is above, try jumping to reach it
+                    }
+                }
+                moveDirectionX = directionX;
             }
-            moveDirectionX = directionX;
         }
 
         doJump = doJump || (Math.random() < 0.05); // 5% chance each tick to try jumping even without food above, to add some vertical movement
@@ -1870,35 +1906,36 @@ function flyingCreatureBehavior(game: Powders, particle: Particle, birdLimits: b
         particleWalkSideways(game, particle, -dangerDirectionX); // Fly away from danger direction
         particleFly(game, particle, -dangerDirectionY); // Fly away vertically from danger
     } else {
-        // Simple flying creature behavior, moves randomly in all directions.
         let moveDirectionX = n101random();
+        // Simple flying creature behavior, moves randomly in all directions.
         let moveDirectionY = n101random(false);
-
-        const poiResult = creaturePoiCheck(game, particle, viewDistanceX, viewDistanceY);
-        const dangerNearby = poiResult.typeFound === "poi_danger";
-        const foodNearby = poiResult.typeFound === "poi_food";
-        let directionX = poiResult.directionX;
         let overrideWantStayHigh = !birdLimits; // Automatically override if using "bird limits"
-        const directionY = poiResult.directionY;
+        if (!game.disableAi) {
+            const poiResult = creaturePoiCheck(game, particle, viewDistanceX, viewDistanceY);
+            const dangerNearby = poiResult.typeFound === "poi_danger";
+            const foodNearby = poiResult.typeFound === "poi_food";
+            let directionX = poiResult.directionX;
+            const directionY = poiResult.directionY;
 
-        // If danger is nearby, try to move away from it
-        if (dangerNearby) {
-            if (directionX === 0) {
-                directionX = n101random() || 1; // If danger is only vertical, pick a random horizontal direction to move away
-            }
-            moveDirectionX = -directionX; // Move in the opposite direction of the danger
-            moveDirectionY = -directionY; // Ditto but vertical.
-            particle.bvs1 = directionX; // Store the danger direction in behavior value 1 to run
-            particle.bvs2 = 5; // Continue running away for 5 ticks
-            particle.bvs3 = directionY; // Store the vertical danger direction in behavior value 3 to run
-        } else if (foodNearby && particle.bvs4 < 80) { // If food is nearby and hunger is below 80, try to move towards it
-            console.log
-            if (poiResult.isAdjacent) {
-                creatureEatParticle(game, particle); // If the food is adjacent, eat it instead of moving
-            } else {
-                moveDirectionX = directionX;
-                moveDirectionY = directionY;
-                overrideWantStayHigh = true; // If the food is not adjacent, override the flying creature's desire to stay at a certain height to try to reach the food, even if it's on the ground
+            // If danger is nearby, try to move away from it
+            if (dangerNearby) {
+                if (directionX === 0) {
+                    directionX = n101random() || 1; // If danger is only vertical, pick a random horizontal direction to move away
+                }
+                moveDirectionX = -directionX; // Move in the opposite direction of the danger
+                moveDirectionY = -directionY; // Ditto but vertical.
+                particle.bvs1 = directionX; // Store the danger direction in behavior value 1 to run
+                particle.bvs2 = 5; // Continue running away for 5 ticks
+                particle.bvs3 = directionY; // Store the vertical danger direction in behavior value 3 to run
+            } else if (foodNearby && particle.bvs4 < 80) { // If food is nearby and hunger is below 80, try to move towards it
+                console.log
+                if (poiResult.isAdjacent) {
+                    creatureEatParticle(game, particle); // If the food is adjacent, eat it instead of moving
+                } else {
+                    moveDirectionX = directionX;
+                    moveDirectionY = directionY;
+                    overrideWantStayHigh = true; // If the food is not adjacent, override the flying creature's desire to stay at a certain height to try to reach the food, even if it's on the ground
+                }
             }
         }
         const startFlightHeight = Math.floor(game.height * flightHeightY);
@@ -2309,8 +2346,31 @@ powderTypes.register("carbon_dioxide", {
     gasGravity: true, // Sinks to the ground
     gasWeight: 0.2, // Heavier than oxygen, so it sinks and can displace other gases
     explosionResistance: 0.0, // The hell you gonna do with CARBON DIOXIDE
-    luminosity: true // Apply the effect to make it look more diffuse in the air, like carbon dioxide is invisible but still has a presence
+    luminosity: true, // Apply the effect to make it look more diffuse in the air, like carbon dioxide is invisible but still has a presence
+    reactions: [
+        {
+            with: "#plant",
+            result: "oxygen",
+            secondResult: "!original",
+            chance: 0.01 // When carbon dioxide reacts with something tagged as plant, it has a chance to turn into oxygen to represent the process of photosynthesis
+        }
+    ]
 });
+powderTypes.register("propane", {
+    name: "Propane",
+    color: "#dfd9c5",
+    colorVariation: 0.1,
+    behavior: gasBehavior, // Propane gas, flammable and can react with fire
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    state: "gas",
+    category: "Gases",
+    weight: -0.1, // Lighter than oxygen, so it rises and can swap with other gases to reach the top of the sky
+    gasGravity: true, // Rises
+    gasWeight: 0.1, // Moves up
+    reverseGravity: true,
+    flammability: 1.0, // Will spawn fire particles each tick it is on fire
+})
 powderTypes.register("dead_plant", {
     name: "Dead Plant",
     color: "#654321",
@@ -2360,7 +2420,7 @@ powderTypes.addToTag("dead_plant", "growable")
 powderTypes.addToTag("dead_plant", "edible") // Creatures can eat dead plants.
 powderTypes.addToTag("mud", "growable") // You can grow plants on mud, because it's wet and has nutrients
 function plantLivableCheck(game: Powders, particle: Particle, mustBeOn: string) {
-    const canBeOn = game.processTypeId(mustBeOn);
+    const canBeOn = game.processTypeId(mustBeOn) as (string | null)[];
     const adjacent = game.getAdjacentParticles(particle.x, particle.y);
     for (const adj of adjacent) {
         if (adj && canBeOn.includes(adj.type ?? "")) {
@@ -2410,6 +2470,7 @@ powderTypes.register("grass", {
     burnInto: "ash", // When grass burns, it turns into ash to represent the remains of the burnt plant
     crushResult: "dead_plant" // Crushes into dead plants, which can then become dirt
 });
+powderTypes.addToTag("grass", "plant")
 powderTypes.addToTag("grass", "edible")
 powderTypes.addToTag("grass", "growable") // Plants can grow from grass (also grass can override grass).
 powderTypes.register("salt", {
@@ -2728,6 +2789,21 @@ powderTypes.register("coal", {
     weight: 1.5,
     explosionResistance: 0.1 // Okay, thinking again.
 });
+powderTypes.register("broken_coal", {
+    name: "Broken Coal",
+    color: "#2b2b2b",
+    colorVariation: 0.2,
+    behavior: powderBehavior, // Same as coal but powder
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    flammability: 0.01, // Can catch fire, but doesnt produce too much fire (Good fuel!)
+    meltingPoint: 1000, // When coal heats up to 1000C or above, it turns to fire
+    meltingResult: "fire",
+    state: "powder",
+    category: "Powders",
+    weight: 1.5,
+    explosionResistance: 0.01 // Why.
+});
 powderTypes.register("radiation", { // Generic radiation particle, does pretty much nothing
     name: "Radiation",
     color: "#00ff00",
@@ -2825,6 +2901,19 @@ toolTypes.register("superheat", {
     },
     onTick: true,
 });
+toolTypes.register("exsuperheat", {
+    name: "Extreme Superheat Tool",
+    color: "#d84242",
+    action: (game, x, y) => {
+        if (!game.mouseLeftDown) return;
+        const halfBrushSize = Math.floor(game.brushSize / 2);
+        const particles = game.getParticlesInSquare(x - halfBrushSize, y - halfBrushSize, game.brushSize, game.brushSize);
+        for (const particle of particles) {
+            particle.temp += game.intensifyBrush ? 750 : 375; // Increase temperature by 375 or 750`` degrees Celsius per tick
+        }
+    },
+    onTick: true,
+});
 toolTypes.register("supercool", {
     name: "Supercool Tool",
     color: "#0095ff",
@@ -2847,6 +2936,19 @@ toolTypes.register("cool", {
         const particles = game.getParticlesInSquare(x - halfBrushSize, y - halfBrushSize, game.brushSize, game.brushSize);
         for (const particle of particles) {
             particle.temp -= game.intensifyBrush ? 20 : 10; // Decrease temperature by 10 or 20 degrees Celsius per tick
+        }
+    },
+    onTick: true
+});
+toolTypes.register("roomtemp", {
+    name: "Room Temperature Tool",
+    color: "#d0b067",
+    action: (game, x, y) => {
+        if (!game.mouseLeftDown) return;
+        const halfBrushSize = Math.floor(game.brushSize / 2);
+        const particles = game.getParticlesInSquare(x - halfBrushSize, y - halfBrushSize, game.brushSize, game.brushSize);
+        for (const particle of particles) {
+            particle.temp = 22; // Set temperature to room temperature (22C)
         }
     },
     onTick: true
@@ -2890,7 +2992,12 @@ toolTypes.register("crush", {
         if (!game.mouseLeftDown) return;
         const particles = game.getParticlesInSquare(x - game.brushSize, y - game.brushSize, (game.brushSize * 2) + 1, (game.brushSize * 2) + 1);
         for (const particle of particles) {
-            game.crushParticle(particle.x, particle.y);
+            if (game.intensifyBrush) {
+                game.crushParticle(particle.x, particle.y);
+                game.crushParticle(particle.x, particle.y); // Crush twice for intensified brush
+            } else {
+                game.crushParticle(particle.x, particle.y);
+            }
         }
     },
     onTick: true
