@@ -6,6 +6,13 @@ export class Particle {
     directionY: number; // Direction Y for energy
     deco: string | null; // For visual variations, like different sand colors
     temp: number; // For temperature-based interactions
+    bvs1: number = 0; // Shared Behavior Value 1, not affected by game, only behaviors
+    bvs2: number = 0; // Shared Behavior Value 2, not affected by game, only behaviors
+    bvs3: number = 0; // Shared Behavior Value 3, not affected by game, only behaviors
+    bvs4: number = 0; // Shared Behavior Value 4, not affected by game, only behaviors
+    bvs5: number = 0; // Shared Behavior Value 5, not affected by game, only behaviors
+    life: number = 0; // For aging particles, not affected by game, only behaviors
+    onFire: boolean = false; // Whether this particle is currently on fire or not
 
     constructor(x: number, y: number, type: string | null, directionX: number = 0, directionY: number = 0) {
         this.x = x;
@@ -58,6 +65,12 @@ export class Particle {
         if (newBHex < 0) newBHex = 0;
         return `#${newRHex.toString(16).padStart(2, '0')}${newGHex.toString(16).padStart(2, '0')}${newBHex.toString(16).padStart(2, '0')}`;
     }
+
+    public lightOnFire() {
+        if (!this.onFire) {
+            this.onFire = true;
+        }
+    }
 }
 
 interface ParticleReaction {
@@ -71,8 +84,11 @@ interface ParticleReaction {
 interface PowderType {
     name: string;
     color: string;
+    burnInto?: string | null; // What does this type burn into
+    ignitionPoint?: number; // What temperature does this ignite (for flammable types)
     colorVariation: number; // 0-1, how much the color can vary randomly
     behavior: (game: Powders, particle: Particle) => void;
+    onSpawn?: (game: Powders, particle: Particle) => void; // Optional behavior that runs only when the particle is first spawned, not every tick like the main behavior
     reverseGravity?: boolean; // Make it move up instead of down
     gasGravity?: boolean; // Makes gasses prefer to move with gravity instead of diffuse
     gasWeight?: number; // For gasses, how much they are affected by gravity if enabled (0-1)
@@ -91,6 +107,8 @@ interface PowderType {
     category: string | null; // Organizes the particle in UI categories, null to hide
     weight: number; // For future physics features, higher weight means it will swap with particles of lower weight more often. Default is 1.
     crushResult?: string | null; // What does this turn into when crushed, null for non-crushable.
+    flammability?: number; // Whether this particle can catch fire or not, 0 means non-flammable, 1 means produces fire every tick.
+    explosionResistance?: number; // How resistant this particle is to explosions, 0 destroys instantly and does not affect explosion, 1 blocks explosion by 1 unit (does not get damaged if current explosion power is <= resistance)
 }
 
 function isStable(game: Powders, x: number, y: number): boolean {
@@ -214,6 +232,7 @@ class PowderTypes {
     pickerElement: HTMLDivElement;
     selectedCategory: string | null = null;
     categories: Map<string, HTMLDivElement> = new Map();
+    tags: Map<string, Set<string>> = new Map(); // For tagging elements.
     static SAND = "sand"; // Regular sand.
     static STONE = "stone"; // Powder stone, not sand.
     static WATER = "water"; // Water/H2O.
@@ -229,6 +248,81 @@ class PowderTypes {
         this.registry = new Map();
         this.listElement = document.getElementById("categories-list") as HTMLUListElement;
         this.pickerElement = document.getElementById("category-display") as HTMLDivElement;
+        this.tags.set("all", new Set());
+    }
+
+    public addToTag(id: string, tag: string, strict: boolean = false) {
+        if (!this.tagExists(tag)) {
+            if (strict) {
+                throw new Error(`Tag "${tag}" does not exist.`);
+            }
+            this.tags.set(tag, new Set());
+        }
+        this.tags.get(tag)!.add(id);
+    }
+
+    public registerTag(tag: string) {
+        if (this.tagExists(tag)) {
+            throw new Error(`Tag "${tag}" already exists.`);
+        }
+        this.tags.set(tag, new Set());
+    }
+
+    public getTag(tag: string): Set<string> | undefined {
+        return this.tags.get(tag);
+    }
+
+    public isTagged(id: string, tag: string): boolean {
+        return this.getAllWithTagId(tag).includes(id);
+    }
+
+    // Avoid ALL circular references!
+    public getAllWithTag(tag: string, previousTagsSearched: Set<string> = new Set()): PowderType[] {
+        const ids = this.getTag(tag);
+        if (ids === undefined) {
+            throw new Error(`Tag "${tag}" does not exist.`);
+        }
+        if (ids.size === 0) {
+            return []; // Tag has nothing, dont even bother
+        }
+        const types: PowderType[] = [];
+        for (const id of ids) {
+            if (id.startsWith("#")) {
+                const nestedTag = id.substring(1);
+                if (nestedTag === tag) {
+                    throw new Error(`Circular tag reference detected for tag "${tag}".`);
+                }
+                if (previousTagsSearched.has(nestedTag)) {
+                    throw new Error(`Circular tag reference detected between tags "${tag}" and "${nestedTag}".`);
+                }
+                const nestedTypes = this.getAllWithTag(nestedTag, new Set(previousTagsSearched).add(tag));
+                types.push(...nestedTypes);
+            } else {
+                const type = this.get(id);
+                if (type) {
+                    types.push(type);
+                }
+            }
+        }
+        return types;
+    }
+
+    public getAllWithTagId(tag: string): string[] {
+        const types = this.getAllWithTag(tag);
+        return types.map(type => this.getId(type)).filter(id => id !== undefined) as string[];
+    }
+
+    public tagExists(tag: string): boolean {
+        return this.tags.has(tag);
+    }
+
+    public randomFromTag(tag: string): PowderType {
+        const types = this.getAllWithTag(tag);
+        if (types.length === 0) {
+            throw new Error(`No powder types found for tag "${tag}".`);
+        }
+        const randomIndex = Math.floor(Math.random() * types.length);
+        return types[randomIndex]!;
     }
 
     public register(id: string, type: PowderType) {
@@ -238,6 +332,7 @@ class PowderTypes {
         const newCategory = type.category && !this.categories.has(type.category);
         this.registry.set(id, type);
         this.list.push(id);
+        this.tags.get("all")!.add(id);
         let list: HTMLUListElement;
         if (newCategory) {
             const categoryElement = document.createElement("div");
@@ -558,6 +653,10 @@ export class Powders {
     height: number = 56;
     brushSize: number = 0; // 1 pixel
     intensifyBrush: boolean = false; // Intensification makes tools stronger.
+    keysDown: Set<string> = new Set();
+    debugRenderShapesInput: HTMLInputElement
+    doDebugRender: boolean = false;
+    debugRenderShapes: { x: number; y: number; width: number; height: number; color: string; forTick: boolean }[] = [];
 
     constructor() {
         console.log("Powders game initialized!");
@@ -568,7 +667,35 @@ export class Powders {
         }
         this.ctx = context;
         this.grid = [];
+        this.debugRenderShapesInput = document.getElementById("debug-render-shapes") as HTMLInputElement;
+        this.debugRenderShapesInput.onchange = () => {
+            this.doDebugRender = this.debugRenderShapesInput.checked;
+        };
         this.resize(this.canvas.width, this.canvas.height, false);
+    }
+
+    public renderDebugSquare(x: number, y: number, width: number, height: number, color: string, forTick: boolean = true) {
+        this.debugRenderShapes.push({ x, y, width, height, color, forTick });
+    }
+
+    public processTypeId(typeId: string | null): (string | null)[] {
+        const types: (string | null)[] = [];
+        if (typeId === null) {
+            return [null];
+        }
+        if (typeId.startsWith("#")) {
+            const tag = typeId.substring(1);
+            const taggedTypes = powderTypes.getAllWithTag(tag);
+            for (const type of taggedTypes) {
+                const id = powderTypes.getId(type);
+                if (id) {
+                    types.push(id);
+                }
+            }
+        } else {
+            types.push(typeId);
+        }
+        return types;
     }
 
     public isFree(x: number, y: number): boolean {
@@ -599,7 +726,12 @@ export class Powders {
             return; // Out of bounds
         }
         if (this.isFree(x, y) || replace) {
-            (this.tmpGrid || this.grid)[y]![x] = new Particle(x, y, type);
+            const particle: Particle = new Particle(x, y, type);
+            (this.tmpGrid || this.grid)[y]![x] = particle;
+            const typeData = type ? powderTypes.require(type) : null;
+            if (typeData?.onSpawn) {
+                typeData.onSpawn(this, particle);
+            }
         }
     }
 
@@ -608,7 +740,7 @@ export class Powders {
     }
 
     public listenInputs() {
-        this.canvas.addEventListener("mousedown", (e) => {
+        document.addEventListener("mousedown", (e) => {
             this.canvas.focus(); // Focus the canvas to receive keypress events
             if (e.button === 0) {
                 this.mouseLeftDown = true;
@@ -622,19 +754,20 @@ export class Powders {
         document.addEventListener("contextmenu", (e) => {
             e.preventDefault();
         });
-        this.canvas.addEventListener("mouseup", (e) => {
+        document.addEventListener("mouseup", (e) => {
             if (e.button === 0) {
                 this.mouseLeftDown = false;
             } else if (e.button === 2) {
                 this.mouseRightDown = false;
             }
         });
-        this.canvas.addEventListener("mousemove", (e) => {
+        document.addEventListener("mousemove", (e) => {
             const rect = this.canvas.getBoundingClientRect();
             this.mouseX = Math.floor((e.clientX - rect.left) / (rect.width / this.canvas.width));
             this.mouseY = Math.floor((e.clientY - rect.top) / (rect.height / this.canvas.height));
         });
         document.addEventListener("keydown", (e) => {
+            this.keysDown.add(e.key);
             switch (e.key) {
                 case "d":
                     this.toggleDebug();
@@ -647,8 +780,11 @@ export class Powders {
                         this.update();
                     }
                     break;
+                case "C":
+                    this.reset(false);
+                    break;
                 case "c":
-                    this.resize(this.canvas.width, this.canvas.height, false);
+                    this.reset(true);
                     break;
                 case "=":
                     this.brushSize = Math.min(this.brushSize + 1, 10);
@@ -662,6 +798,7 @@ export class Powders {
             }
         });
         document.addEventListener("keyup", (e) => {
+            this.keysDown.delete(e.key);
             switch (e.key) {
                 case "Shift":
                     this.intensifyBrush = false;
@@ -741,6 +878,7 @@ export class Powders {
     }
 
     public update() {
+        this.debugRenderShapes = this.debugRenderShapes.filter(shape => !shape.forTick);
         this.tmpGrid = [];
         for (let y = 0; y < this.grid.length; y++) {
             const newRow: Particle[] = [];
@@ -762,7 +900,15 @@ export class Powders {
                     type.behavior(this, particle);
                     for (const reaction of type.reactions || []) {
                         if (Math.random() < reaction.chance) {
-                            const otherParticle: Particle | null = this.getAdjacentOfType(particle.x, particle.y, reaction.with);
+                            const allReactionTypes = this.processTypeId(reaction.with);
+                            let otherParticle: Particle | null = null;
+                            for (const type of allReactionTypes) {
+                                if (type === null) {
+                                    continue; // Ignore
+                                }
+                                otherParticle = this.getAdjacentOfType(particle.x, particle.y, type);
+                                if (otherParticle) break;
+                            }
                             if (otherParticle) {
                                 if (reaction.behavior) {
                                     reaction.behavior(this, particle, otherParticle);
@@ -786,8 +932,8 @@ export class Powders {
                             adj.temp += transferAmount;
                         }
                     }
-                    if (adjacentParticles.length < 8) {
-                        // If there are less than 8 adjacent particles, transfer some heat to the air (which is effectively a heat loss)
+                    if (adjacentParticles.filter(p => p !== null).length < 8) {
+                        // If there are less than 8 (non-null) adjacent particles, transfer some heat to the air (which is effectively a heat loss)
                         const tempDiff = particle.temp - 22; // Assuming air temp is 22 Celsius
                         const transferAmount = tempDiff * airTempTransferRate;
                         particle.temp -= transferAmount;
@@ -843,6 +989,42 @@ export class Powders {
                             } else {
                                 this.spawnParticle(particle.x, particle.y, type.freezingResultSecond, true);
                             }
+                        }
+                    }
+                    if (type.flammability) {
+                        if (particle.temp >= (type.ignitionPoint || 600)) {
+                            particle.lightOnFire();
+                        }
+                    }
+                    if (particle.onFire) {
+                        // Not undefined and flammability > 0
+                        if (type.flammability) {
+                            // Chance to produce fire particle depending on flammability
+                            if (Math.random() < type.flammability) {
+                                let randomDirectionX = n101random(false);
+                                const randomDirectionY = n101random(false);
+                                if (this.isFree(particle.x + randomDirectionX, particle.y + randomDirectionY)) {
+                                    this.spawnParticle(particle.x + randomDirectionX, particle.y + randomDirectionY, "fire", true);
+                                } else if (this.isFree(particle.x - randomDirectionX, particle.y - randomDirectionY)) {
+                                    this.spawnParticle(particle.x - randomDirectionX, particle.y - randomDirectionY, "fire", true);
+                                } else if (this.isFree(particle.x + randomDirectionX, particle.y - randomDirectionY)) {
+                                    this.spawnParticle(particle.x + randomDirectionX, particle.y - randomDirectionY, "fire", true);
+                                } else if (this.isFree(particle.x - randomDirectionX, particle.y + randomDirectionY)) {
+                                    this.spawnParticle(particle.x - randomDirectionX, particle.y + randomDirectionY, "fire", true);
+                                } else if (this.isFree(particle.x + randomDirectionX, particle.y)) {
+                                    this.spawnParticle(particle.x + randomDirectionX, particle.y, "fire", true);
+                                } else if (this.isFree(particle.x - randomDirectionX, particle.y)) {
+                                    this.spawnParticle(particle.x - randomDirectionX, particle.y, "fire", true);
+                                } else if (this.isFree(particle.x, particle.y + randomDirectionY)) {
+                                    this.spawnParticle(particle.x, particle.y + randomDirectionY, "fire", true);
+                                } else if (this.isFree(particle.x, particle.y - randomDirectionY)) {
+                                    this.spawnParticle(particle.x, particle.y - randomDirectionY, "fire", true);
+                                } else {
+                                    this.spawnParticle(particle.x, particle.y, type.burnInto ? type.burnInto : "fire", true);
+                                }
+                            }
+                        } else {
+                            particle.onFire = false; // If not flammable, stop being on fire
                         }
                     }
                 }
@@ -940,6 +1122,7 @@ export class Powders {
     }
 
     public render() {
+        this.debugRenderShapes = this.debugRenderShapes.filter(shape => shape.forTick);
         const toolData = this.selectedTool ? toolTypes.require(this.selectedTool) : null;
         if (toolData && !toolData.onTick) {
             this.mouseDraw();
@@ -979,9 +1162,19 @@ export class Powders {
         debugMousePos.textContent = `${this.mouseX}, ${this.mouseY} (${mouseParticle?.type ?? "none"})`;
         const debugParticleInfo = document.getElementById("dbg-particle-info")!;
         debugParticleInfo.textContent = mouseParticle ? `Particle type: ${mouseParticle.type}, Particle deco: ${mouseParticle.deco ?? "none"}, Particle Temperature (Celsius): ${mouseParticle.temp ?? "N/A"}` : "No particle";
+        // Draw brush preview
         this.ctx.fillStyle = "white";
         this.ctx.globalAlpha = 0.35;
         this.ctx.fillRect(this.mouseX - this.brushSize, this.mouseY - this.brushSize, this.brushSize * 2 + 1, this.brushSize * 2 + 1);
+        // Debug rendering
+        const showDebugShapes = this.doDebugRender && this.debugRenderShapes.length > 0;
+        if (showDebugShapes) {
+            this.ctx.globalAlpha = 0.75;
+            for (const shape of this.debugRenderShapes) {
+                this.ctx.fillStyle = shape.color;
+                this.ctx.fillRect(shape.x, shape.y, shape.width, shape.height);
+            }
+        }
         this.ctx.globalAlpha = 1.0;
     }
 
@@ -1024,15 +1217,11 @@ export class Powders {
         requestAnimationFrame(toolTickLoop);
     }
 
-    public resize(width: number, height: number, generateTerrain: boolean = true) {
-        this.canvas.width = width;
-        this.canvas.height = height;
-        this.width = width;
-        this.height = height;
+    public reset(generateTerrain: boolean = true) {
         this.grid = [];
-        for (let y = 0; y < height; y++) {
+        for (let y = 0; y < this.height; y++) {
             const row: Particle[] = [];
-            for (let x = 0; x < width; x++) {
+            for (let x = 0; x < this.width; x++) {
                 row.push(new Particle(x, y, null));
             }
             this.grid.push(row);
@@ -1040,6 +1229,14 @@ export class Powders {
         if (generateTerrain) {
             this.generateSimpleTerrain();
         }
+    }
+
+    public resize(width: number, height: number, generateTerrain: boolean = true) {
+        this.canvas.width = width;
+        this.canvas.height = height;
+        this.width = width;
+        this.height = height;
+        this.reset(generateTerrain);
     }
 
     public updatePositions() {
@@ -1081,7 +1278,8 @@ export class Powders {
     public generateSimpleTerrain() {
         const bedrockHeight = this.canvas.height - 1; // Bedrock layer at the bottom
         const stoneHeight = this.canvas.height * (1 - 0.2); // Stone layer above bedrock
-        const sandHeight = this.canvas.height * (1 - 0.3); // Sand layer above stone
+        const dirtHeight = this.canvas.height * (1 - 0.3); // Dirt layer above stone
+        const grassHeight = dirtHeight - 1; // Grass layer 1 above dirt
         for (let y = 0; y < this.canvas.height; y++) {
             for (let x = 0; x < this.canvas.width; x++) {
                 if (y >= bedrockHeight) {
@@ -1089,8 +1287,91 @@ export class Powders {
                 } else if (y >= stoneHeight) {
                     this.grid[y]![x] = new Particle(x, y, PowderTypes.STONE);
                 }
-                else if (y >= sandHeight) {
-                    this.grid[y]![x] = new Particle(x, y, PowderTypes.SAND);
+                else if (y >= dirtHeight) {
+                    this.grid[y]![x] = new Particle(x, y, "dirt");
+                } else if (y >= grassHeight) {
+                    this.grid[y]![x] = new Particle(x, y, "grass");
+                }
+            }
+        }
+    }
+
+    public getParticlesInLine(x1: number, y1: number, x2: number, y2: number): Particle[] {
+        const particles: Particle[] = [];
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const steps = Math.max(Math.abs(dx), Math.abs(dy));
+        if (steps === 0) {
+            const particle = this.getParticle(x1, y1);
+            if (particle) {
+                particles.push(particle);
+            }
+            return particles;
+        }
+        const stepX = dx / steps;
+        const stepY = dy / steps;
+        for (let i = 0; i <= steps; i++) {
+            const x = Math.round(x1 + stepX * i);
+            const y = Math.round(y1 + stepY * i);
+            const particle = this.getParticle(x, y);
+            if (particle) {
+                particles.push(particle);
+            }
+        }
+        return particles;
+    }
+
+    public explode(x: number, y: number, radius: number, force: number, lightFire: boolean = true, nuclear: boolean = false) {
+        const resolution = 32; // 32 rays for a more circular explosion.
+        for (let i = 0; i < resolution; i++) {
+            const angle = (i / resolution) * 2 * Math.PI;
+            const rayX = Math.cos(angle);
+            const rayY = Math.sin(angle);
+            const particlesInRay = this.getParticlesInLine(x, y, Math.floor(x + rayX * (radius + (nuclear ? 5 : 0))), Math.floor(y + rayY * (radius + (nuclear ? 5 : 0))));
+            let currentForce = force;
+            for (let j = 0; j < particlesInRay.length; j++) {
+                const particle = particlesInRay[j]!;
+                if (j >= radius) {
+                    if (!nuclear) {
+                        break; // Stop the ray if it goes beyond the explosion radius (unless it's a nuclear explosion, which has lingering radiation)
+                    }
+                    // Spawn fallout particles in free space with 5% chance
+                    if (Math.random() < 0.05) {
+                        // Uhhh n101 random's only argument is to use less zero results (default true)
+                        const falloutX = Math.floor(x + rayX * (radius + 5 + n101random()));
+                        const falloutY = Math.floor(y + rayY * (radius + 5 + n101random()));
+                        if (this.isFree(falloutX, falloutY)) {
+                            this.spawnParticle(falloutX, falloutY, "fallout", true);
+                        }
+                    }
+                    // Spawn radiation or plasma (biased to radiation) with 1% chance in free space for nuclear explosions
+                    if (nuclear && Math.random() < 0.01) {
+                        const radiationX = Math.floor(x + rayX * (radius + 5 + n101random()));
+                        const radiationY = Math.floor(y + rayY * (radius + 5 + n101random()));
+                        if (this.isFree(radiationX, radiationY)) {
+                            this.spawnParticle(radiationX, radiationY, Math.random() < 0.75 ? "radiation" : "plasma", true);
+                        }
+                    }
+                }
+                const type = particle.type ? powderTypes.require(particle.type) : null;
+                const resistance = type?.explosionResistance ?? 0;
+                if (currentForce > resistance) {
+                    currentForce -= resistance;
+                    if (lightFire) {
+                        particle.lightOnFire();
+                    }
+                    const random = Math.random();
+                    if (nuclear) {
+                        if (random < 0.125) {
+                            this.spawnParticle(particle.x, particle.y, "plasma", true);
+                        } else if (random < 0.25) {
+                            this.spawnParticle(particle.x, particle.y, "fallout", true);
+                        } else {
+                            this.spawnParticle(particle.x, particle.y, null, true);
+                        }
+                    }
+                } else {
+                    break; // Stop the ray if it hits a particle that can fully resist the explosion
                 }
             }
         }
@@ -1120,6 +1401,7 @@ export function getGame(): Powders | null {
     return game;
 }
 
+// Vanilla elements
 powderTypes.register(PowderTypes.SAND, {
     name: "Sand",
     color: "#C2B280",
@@ -1138,7 +1420,7 @@ powderTypes.register(PowderTypes.SAND, {
     meltingResult: "lava",
     state: "powder",
     category: "Powders",
-    weight: 1
+    weight: 1,
 });
 powderTypes.register("ice", {
     name: "Ice",
@@ -1151,7 +1433,44 @@ powderTypes.register("ice", {
     meltingResult: PowderTypes.WATER,
     state: "solid",
     category: "Solids",
-    weight: 0.5
+    weight: 0.5,
+    explosionResistance: 0.5, // Ice can partially resist explosions, reducing their damage by half a unit
+});
+powderTypes.register("gunpowder", {
+    name: "Gunpowder",
+    color: "#4b4d3f",
+    colorVariation: 0.1,
+    behavior: (game, particle) => {
+        powderBehavior(game, particle);
+        if (particle.onFire) {
+            game.explode(particle.x, particle.y, 5, 3); // Explode with radius 5 and force 3 when on fire
+        }
+    },
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    flammability: 0.9, // Very flammable, has a high chance to produce fire particles when on fire
+    state: "powder",
+    category: "Powders",
+    explosionResistance: 0, // Cannot resist explosions at all
+    weight: 0.8, // Lighter than sand, which is 1, to reflect how gunpowder is less dense than sand
+});
+powderTypes.register("tnt", {
+    name: "TNT",
+    color: "#e40000",
+    colorVariation: 0.1,
+    behavior: (game, particle) => {
+        solidBehavior(game, particle);
+        if (particle.onFire) {
+            game.explode(particle.x, particle.y, 10, 5); // Explode with radius 10 and force 5 when on fire
+        }
+    },
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    flammability: 0.9, // Very flammable, has a high chance to produce fire particles when on fire
+    state: "solid",
+    category: "Solids",
+    explosionResistance: 0, // Cannot resist explosions at all
+    weight: 1.5, // Heavier than sand, which is 1, to reflect how TNT is denser than sand
 });
 powderTypes.register("snow", {
     name: "Snow",
@@ -1166,6 +1485,7 @@ powderTypes.register("snow", {
     category: "Powders",
     weight: 0.2,
     crushResult: "ice", // When snow is crushed (like by a tool), it has a chance to turn into ice (compacted snow) instead of just being removed
+    explosionResistance: 0.3, // Snow can partially resist explosions, reducing their damage by 0.3 units (Worse than ice)
 });
 powderTypes.register("dirtywater", {
     name: "Dirty Water",
@@ -1191,6 +1511,7 @@ powderTypes.register("dirtywater", {
     freezingResult: "ice",
     freezingResultSecond: "impurity", // When dirty water turns to ice, it has a chance to release an impurity particle (like a small piece of dirt)
     weight: 0.1, // Heavier than water (water is 0)
+    explosionResistance: 0.1, // Only able to resist from impurities
 });
 powderTypes.register("impurity", { // Junk particle.
     name: "Impurity",
@@ -1209,7 +1530,116 @@ powderTypes.register("impurity", { // Junk particle.
         }
     ],
     weight: 0.5, // Lighter than sand but heavier than water.
-    crushResult: 
+    // Impurities are somewhat explosive now :)
+    flammability: 0.5, // Impurities can catch fire, adding a small chance for certain reactions to create a fire particle when an impurity is present
+    explosionResistance: 0.1, // Same as dirty water.
+});
+powderTypes.register("titanium", {
+    name: "Titanium",
+    color: "#b0b0b0",
+    colorVariation: 0.1,
+    behavior: solidBehavior, // A strong metal that does not move, but can be melted by heat
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    meltingPoint: 1668, // Titanium melts at 1668C
+    meltingResult: "liquid_titanium",
+    state: "solid",
+    category: "Metals",
+    weight: 4.5,
+    crushResult: "titanium_shard", // When titanium is crushed (like by a tool), it has a chance to turn into a titanium shard (representing the jagged pieces created from crushing the metal) instead of just being removed
+    explosionResistance: 2.5, // Titanium can resist explosions very well, reducing their damage by 2.5 units
+});
+powderTypes.register("liquid_titanium", {
+    name: "Liquid Titanium",
+    color: "#ff9d00",
+    colorVariation: 0.1,
+    behavior: liquidBehavior, // Molten titanium, behaves like a liquid but much heavier and can solidify back into titanium when cooled
+    defaultTemp: 1700,
+    tempTransferRate: 0.1,
+    freezingPoint: 1668, // When liquid titanium cools down to 1668C or below, it solidifies back into titanium
+    freezingResult: "titanium",
+    state: "liquid",
+    category: "Metals",
+    weight: 4.5,
+    luminosity: true, // Glows brightly when molten
+});
+powderTypes.register("titanium_shard", {
+    name: "Titanium Shard",
+    color: "#b0b0b0",
+    colorVariation: 0.2,
+    behavior: powderBehavior, // A shard of titanium that can be created from crushing titanium, behaves like a powder but heavier than regular titanium due to its jagged shape
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    state: "powder",
+    category: "Metals",
+    meltingPoint: 1668, // Titanium shard can melt back into liquid titanium at 1668C (making it re-usable)
+    meltingResult: "liquid_titanium",
+    weight: 5, // Heavier than regular titanium due to jagged shape
+    crushResult: "metal_dust", // When titanium shard is crushed, it turns into metal dust (representing the fine particles created from grinding down the shard)
+    explosionResistance: 0.25, // Bad for explosion resistance, shattered
+});
+powderTypes.register("metal_dust", {
+    name: "Metal Dust",
+    color: "#636363",
+    colorVariation: 0.2,
+    behavior: powderBehavior,
+    defaultTemp: 22,
+    tempTransferRate: 0.01,
+    state: "solid",
+    category: "Special",
+    weight: -0.75, // Super light, but heavier than normal dust, most gases can swap with it, making it rise.
+    crushResult: null, // Dust cannot be crushed
+    meltingPoint: 1500, // Metal dust can melt at 1500C
+    meltingResult: "liquid_junk_metal", // Too impure to extract original metal, so just junk
+    explosionResistance: 0.0, // Unable to affect explosions.
+});
+powderTypes.register("nuke", { // Large nuclear explosion when lit on fire
+    name: "Nuke",
+    color: "#1e591e",
+    colorVariation: 0.1,
+    behavior: (game, particle) => {
+        solidBehavior(game, particle);
+        if (particle.onFire) {
+            game.explode(particle.x, particle.y, 50, 10, true, true); // Explode with radius 50 and force 10 when on fire, also light fires and is a nuclear explosion
+        }
+    },
+    state: "solid",
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    flammability: 0.9, // Very flammable, has a high chance to produce fire particles when on fire
+    category: "Special",
+    weight: 10, // Very heavy, to reflect the massive amount of material in a nuke
+    explosionResistance: 0, // Cannot resist explosions at all, will be destroyed by other explosions
+});
+powderTypes.register("junk_metal", { // Not very reactive or useful, just junk
+    name: "Junk Metal",
+    color: "#7f7f7f",
+    colorVariation: 0.2,
+    behavior: solidBehavior, // A solid piece of junk metal that can be created from certain reactions, behaves like a solid but can be melted by heat
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    meltingPoint: 1500, // Junk metal can melt at 1500C
+    meltingResult: "liquid_junk_metal",
+    state: "solid",
+    category: "Metals",
+    weight: 3,
+    crushResult: "metal_dust", // When junk metal is crushed, it turns into metal dust (representing the fine particles created from grinding down the junk)
+    explosionResistance: 0.1, // Not very resistant to explosions, can be easily damaged or destroyed by them
+});
+powderTypes.register("liquid_junk_metal", {
+    name: "Liquid Junk Metal",
+    color: "#d9b750",
+    colorVariation: 0.2,
+    behavior: liquidBehavior, // Molten junk metal, behaves like a liquid but can solidify back into junk metal when cooled
+    defaultTemp: 1550,
+    tempTransferRate: 0.1,
+    freezingPoint: 1500, // When liquid junk metal cools down to 1500C or below, it solidifies back into junk metal
+    freezingResult: "junk_metal",
+    state: "liquid",
+    category: "Metals",
+    weight: 3,
+    luminosity: true, // Glows when molten, but not as bright as liquid titanium
+    explosionResistance: 0.1 // Not very resistant to explosions, can be easily damaged or destroyed by them
 });
 powderTypes.register("ash", {
     name: "Ash",
@@ -1229,9 +1659,10 @@ powderTypes.register("ash", {
     category: "Powders",
     weight: 0.3,
     crushResult: "dust", // Ash crushes into dust.
+    explosionResistance: 0.05, // Ash can slightly resist explosions, reducing their damage by 0.05 units
 });
-function falloutBehavior(game: Powders, particle: Particle) {
-    powderBehavior(game, particle);
+function falloutBehavior(game: Powders, particle: Particle, behavior: (game: Powders, particle: Particle) => void = powderBehavior) {
+    behavior(game, particle);
     // Emit radiation particles around the fallout
     if (Math.random() < 0.025) { // 2.5% chance each tick to emit radiation
         const directionX = n101random();
@@ -1242,6 +1673,260 @@ function falloutBehavior(game: Powders, particle: Particle) {
         }
     }
 }
+function particleWalkSideways(game: Powders, particle: Particle, direction: number) {
+    // Try to "walk" sideways, stepping up or down if needed.
+    if (game.isFree(particle.x + direction, particle.y)) {
+        game.swapParticles(particle.x, particle.y, particle.x + direction, particle.y);
+    } else if (game.isFree(particle.x + direction, particle.y - 1)) {
+        game.swapParticles(particle.x, particle.y, particle.x + direction, particle.y - 1);
+    } else if (game.isFree(particle.x + direction, particle.y + 1)) {
+        game.swapParticles(particle.x, particle.y, particle.x + direction, particle.y + 1);
+    }
+}
+function particleJump(game: Powders, particle: Particle) {
+    // Try to "jump" up, then sideways, then up again if needed.
+    if (game.isFree(particle.x, particle.y - 1)) {
+        game.swapParticles(particle.x, particle.y, particle.x, particle.y - 1);
+        game.renderDebugSquare(particle.x, particle.y - 1, 1, 1, "rgba(0, 255, 255, 0.5)");
+    } else if (game.isFree(particle.x - 1, particle.y - 1)) {
+        game.swapParticles(particle.x, particle.y, particle.x - 1, particle.y - 1);
+        game.renderDebugSquare(particle.x - 1, particle.y - 1, 1, 1, "rgba(0, 255, 255, 0.5)");
+    } else if (game.isFree(particle.x + 1, particle.y - 1)) {
+        game.swapParticles(particle.x, particle.y, particle.x + 1, particle.y - 1);
+        game.renderDebugSquare(particle.x + 1, particle.y - 1, 1, 1, "rgba(0, 255, 255, 0.5)");
+    }
+}
+function particleFly(game: Powders, particle: Particle, direction: number) {
+    // Try to fly up/down in the given direction, then sideways if needed.
+    if (game.isFree(particle.x, particle.y - direction)) {
+        game.swapParticles(particle.x, particle.y, particle.x, particle.y - direction);
+    } else if (game.isFree(particle.x - 1, particle.y - direction)) {
+        game.swapParticles(particle.x, particle.y, particle.x - 1, particle.y - direction);
+    } else if (game.isFree(particle.x + 1, particle.y - direction)) {
+        game.swapParticles(particle.x, particle.y, particle.x + 1, particle.y - direction);
+    }
+}
+function creatureDefaultBehaviors(game: Powders, particle: Particle) {
+    // If the creature touches a particle tagged with "ai_kill", it dies (turns into nothing).
+    const killTag = "ai_kill";
+    const adjacentParticles = game.getAdjacentParticles(particle.x, particle.y);
+    for (const p of adjacentParticles) {
+        if (p && p.type && powderTypes.isTagged(p.type, killTag)) {
+            game.spawnParticle(particle.x, particle.y, "blood", true); // Kill the creature
+            break;
+        }
+    }
+    if (particle.bvs4 <= 0) {
+        // Died to hunger.
+        game.spawnParticle(particle.x, particle.y, "blood", true);
+    } else {
+        particle.bvs4--; // Decrease hunger timer each tick, when it reaches 0 the creature dies of hunger
+    }
+}
+
+const creatureMaxHunger = 200
+
+function creatureOnSpawn(game: Powders, particle: Particle) {
+    particle.bvs4 = creatureMaxHunger; // BSV4 will be used as hunger (<80 ticks will search for food)
+}
+
+function creatureEatParticle(game: Powders, particle: Particle) {
+    const foodTag = "edible";
+    const adjacentParticles = game.getAdjacentParticles(particle.x, particle.y);
+    for (const p of adjacentParticles) {
+        if (p && p.type && powderTypes.isTagged(p.type, foodTag)) {
+            game.spawnParticle(p.x, p.y, "dirt", true); // Remove the food particle
+            particle.bvs4 = creatureMaxHunger; // Reset hunger timer when eating
+            break;
+        }
+    }
+}
+
+function creaturePoiCheck(game: Powders, particle: Particle, viewDistX: number, viewDistY: number): { typeFound: "poi_food" | "poi_danger" | null, directionX: number, directionY: number, poiX: number, poiY: number, isAdjacent: boolean } {
+    const poiFoodTag = "edible";
+    const poiDangerTag = "ai_danger";
+    const poiTag = "ai_poi";
+    let foundFood = false;
+    let foundDanger = false;
+    let directionX = 0;
+    let directionY = 0;
+    let poiX = 0;
+    let poiY = 0;
+    let isAdjacent = false;
+    let closestDistance = Infinity;
+    const squareX = particle.x - viewDistX
+    const squareY = particle.y - viewDistY
+    const squareWidth = viewDistX * 2 + 1;
+    const squareHeight = viewDistY * 2 + 1;
+    let nearbyParticles = game.getParticlesInSquare(squareX, squareY, squareWidth, squareHeight).filter(p => p !== null) as Particle[]; // Get all particles in the square around the creature, filtering out nulls
+    nearbyParticles = nearbyParticles.filter(p => p.type && powderTypes.isTagged(p.type, poiTag)); // Filter to only particles that are tagged as POIs
+    game.renderDebugSquare(squareX, squareY, squareWidth, squareHeight, "rgba(255, 0, 255, 0.5)");
+    for (const p of nearbyParticles) {
+        if (p && p.type) {
+            const distance = Math.hypot(p.x - particle.x, p.y - particle.y);
+            if (powderTypes.isTagged(p.type, poiDangerTag)) {
+                if (distance < closestDistance) {
+                    foundDanger = true;
+                    closestDistance = distance;
+                    directionX = p.x - particle.x;
+                    directionY = p.y - particle.y;
+                    poiX = p.x;
+                    poiY = p.y;
+                }
+            } else if (powderTypes.isTagged(p.type, poiFoodTag)) {
+                if (distance < closestDistance) {
+                    foundFood = true;
+                    closestDistance = distance;
+                    directionX = p.x - particle.x;
+                    directionY = p.y - particle.y;
+                    poiX = p.x;
+                    poiY = p.y;
+                }
+            }
+            if (Math.abs(p.x - particle.x) <= 1 && Math.abs(p.y - particle.y) <= 1) {
+                isAdjacent = true;
+            }
+        }
+    }
+    directionX = directionX === 0 ? 0 : directionX / Math.abs(directionX); // Normalize to -1, 0, or 1
+    directionY = directionY === 0 ? 0 : directionY / Math.abs(directionY);
+    directionY = -directionY;
+    let typeFound: "poi_food" | "poi_danger" | null = null;
+    if (foundDanger) {
+        typeFound = "poi_danger";
+    } else if (foundFood) {
+        typeFound = "poi_food";
+    }
+    game.renderDebugSquare(poiX, poiY, 1, 1, "rgba(0, 0, 255, 1.0)"); // Debug square for target POI
+    return { typeFound, directionX, directionY, poiX, poiY, isAdjacent };
+}
+
+function landCreatureBehavior(game: Powders, particle: Particle) {
+    creatureDefaultBehaviors(game, particle);
+    const viewDistanceX = 8;
+    const viewDistanceY = 8;
+    if (particle.bvs2 > 0) { // If behavior value 2 is greater than 0, it means the creature is currently trying to run away from danger
+        const dangerDirectionX = particle.bvs1;
+        particle.bvs2--; // Decrease the timer for running away
+        particleWalkSideways(game, particle, -dangerDirectionX);
+    } else {
+        // Simple land creature behavior, moves randomly left or right, sometimes jumping.
+        let moveDirectionX = n101random(); // Set to false to lower movement chance.
+        // Check view for POIs
+
+        const poiResult = creaturePoiCheck(game, particle, viewDistanceX, viewDistanceY);
+        const dangerNearby = poiResult.typeFound === "poi_danger";
+        const foodNearby = poiResult.typeFound === "poi_food";
+        let directionX = poiResult.directionX;
+        const directionY = poiResult.directionY;
+        let doJump = false;
+
+        // If danger is nearby, "panic" (try to move away)
+        if (dangerNearby) {
+            if (directionX === 0) {
+                directionX = n101random() || 1; // If danger is only vertical, pick a random horizontal direction to move away
+            }
+            if (directionY > 0) {
+                doJump = true; // If danger is below, try jumping to get away
+            }
+            particle.bvs1 = directionX; // Store the danger direction in behavior value 1 to run
+            particle.bvs2 = 5; // Continue running away for 5 ticks
+            moveDirectionX = -directionX; // Move in the opposite direction of the danger
+        } else if (foodNearby && particle.bvs4 < 80) { // If food is nearby and hunger is below 80, try to move towards it
+            if (poiResult.isAdjacent) {
+                creatureEatParticle(game, particle); // If the food is adjacent, eat it instead of moving
+            } else {
+                if (directionY < 0) {
+                    doJump = true; // If food is above, try jumping to reach it
+                }
+            }
+            moveDirectionX = directionX;
+        }
+
+        doJump = doJump || (Math.random() < 0.05); // 5% chance each tick to try jumping even without food above, to add some vertical movement
+
+        if (moveDirectionX !== 0) {
+            particleWalkSideways(game, particle, moveDirectionX);
+        }
+        if (doJump) { // 5% chance each tick to try jumping
+            particleJump(game, particle);
+        }
+    }
+    // Gravity
+    if (game.canSwap(particle.type, particle.x, particle.y + 1)) {
+        game.swapParticles(particle.x, particle.y, particle.x, particle.y + 1);
+    }
+}
+const flightHeightY = 0.1; // Y Level percent of where flying creatures try to stay.
+const flightHeightEndY = 0.3; // Y Level percent of where flying creatures try to stay, if they go below this they will try to fly up.
+function flyingCreatureBehavior(game: Powders, particle: Particle, birdLimits: boolean = true) {
+    const viewDistanceX = 8;
+    const viewDistanceY = game.height; // Flying, can see farther up and down (to find food on ground).
+    creatureDefaultBehaviors(game, particle);
+    if (particle.bvs2 > 0) { // If behavior value 2 is greater than 0, it means the creature is currently trying to run away from danger
+        const dangerDirectionX = particle.bvs1;
+        const dangerDirectionY = particle.bvs3; // Get the vertical danger direction from behavior value 3
+        particle.bvs2--;
+        particleWalkSideways(game, particle, -dangerDirectionX); // Fly away from danger direction
+        particleFly(game, particle, -dangerDirectionY); // Fly away vertically from danger
+    } else {
+        // Simple flying creature behavior, moves randomly in all directions.
+        let moveDirectionX = n101random();
+        let moveDirectionY = n101random(false);
+
+        const poiResult = creaturePoiCheck(game, particle, viewDistanceX, viewDistanceY);
+        const dangerNearby = poiResult.typeFound === "poi_danger";
+        const foodNearby = poiResult.typeFound === "poi_food";
+        let directionX = poiResult.directionX;
+        let overrideWantStayHigh = !birdLimits; // Automatically override if using "bird limits"
+        const directionY = poiResult.directionY;
+
+        // If danger is nearby, try to move away from it
+        if (dangerNearby) {
+            if (directionX === 0) {
+                directionX = n101random() || 1; // If danger is only vertical, pick a random horizontal direction to move away
+            }
+            moveDirectionX = -directionX; // Move in the opposite direction of the danger
+            moveDirectionY = -directionY; // Ditto but vertical.
+            particle.bvs1 = directionX; // Store the danger direction in behavior value 1 to run
+            particle.bvs2 = 5; // Continue running away for 5 ticks
+            particle.bvs3 = directionY; // Store the vertical danger direction in behavior value 3 to run
+        } else if (foodNearby && particle.bvs4 < 80) { // If food is nearby and hunger is below 80, try to move towards it
+            console.log
+            if (poiResult.isAdjacent) {
+                creatureEatParticle(game, particle); // If the food is adjacent, eat it instead of moving
+            } else {
+                moveDirectionX = directionX;
+                moveDirectionY = directionY;
+                overrideWantStayHigh = true; // If the food is not adjacent, override the flying creature's desire to stay at a certain height to try to reach the food, even if it's on the ground
+            }
+        }
+        const startFlightHeight = Math.floor(game.height * flightHeightY);
+        const endFlightHeight = Math.floor(game.height * flightHeightEndY);
+        if (particle.y < startFlightHeight && !overrideWantStayHigh) {
+            // If above flight height, try to fly up
+            particleFly(game, particle, -1);
+        } else if (particle.y > endFlightHeight && !overrideWantStayHigh) {
+            // If below flight height, try to fly down
+            particleFly(game, particle, 1);
+        } else {
+            // Otherwise, move randomly left or right, and up or down
+            if (moveDirectionX !== 0) {
+                particleWalkSideways(game, particle, moveDirectionX);
+            }
+            if (moveDirectionY !== 0) {
+                particleFly(game, particle, moveDirectionY);
+            }
+        }
+        particleWalkSideways(game, particle, moveDirectionX); // Try to move sideways as well for more dynamic movement
+    }
+}
+function flyingNonBirdBehavior(game: Powders, particle: Particle) {
+    flyingCreatureBehavior(game, particle, false)
+}
+powderTypes.addToTag("#edible", "ai_poi")
+powderTypes.addToTag("#ai_danger", "ai_poi")
+powderTypes.addToTag("#ai_kill", "ai_danger")
 powderTypes.register("fallout", { // Similar to ash but heavier and emits radiation
     name: "Fallout",
     color: "#4f604d",
@@ -1252,7 +1937,7 @@ powderTypes.register("fallout", { // Similar to ash but heavier and emits radiat
     reactions: [
         {
             with: PowderTypes.WATER,
-            result: "dirtywater",
+            result: "falloutwater",
             chance: 0.5,
             secondResult: "radiation" // When fallout reacts with water, it has a chance to create a radiation particle in addition to dirty water
         }
@@ -1261,6 +1946,207 @@ powderTypes.register("fallout", { // Similar to ash but heavier and emits radiat
     category: "Powders",
     weight: 0.4,
     crushResult: "radioactive_dust", // Fallout crushes into radioactive dust.
+    explosionResistance: 0.05, // Same as ash
+});
+powderTypes.addToTag("fallout", "ai_danger")
+powderTypes.register("falloutwater", {
+    name: "Fallout Water",
+    color: "#3a5f32",
+    colorVariation: 0.1,
+    behavior: (game, particle) => falloutBehavior(game, particle, liquidBehavior), // Similar to water but with impurities
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    reactions: [
+        {
+            with: PowderTypes.SAND,
+            result: "wetsand",
+            chance: 0.5,
+            secondResult: "fallout" // When fallout water reacts with sand, it has a chance to create an impurity particle (like a small piece of dirt) in addition to wet sand
+        }
+    ],
+    meltingPoint: 110, // When fallout water heats up to 110C or above, it turns to steam
+    meltingResult: "fallout_steam",
+    meltingResultSecond: "fallout", // When fallout water turns to steam, it has a chance to release an impurity particle (like a small piece of dirt)
+    state: "liquid",
+    category: "Fluids",
+    freezingPoint: -10, // When fallout water cools down to -10C or below, it turns to ice (fallout water has a lower freezing point due to impurities)
+    freezingResult: "ice",
+    freezingResultSecond: "fallout", // When fallout water turns to ice, it has a chance to release an impurity particle (like a small piece of dirt)
+    weight: 0.1, // Heavier than water (water is 0)
+    explosionResistance: 0.1, // Only able to resist from impurities
+});
+powderTypes.addToTag("falloutwater", "ai_danger")
+powderTypes.register("fallout_steam", {
+    name: "Fallout Steam",
+    color: "#2a8053",
+    colorVariation: 0.1,
+    behavior: (game, particle) => {
+        falloutBehavior(game, particle, gasBehavior); // Steam created from fallout water, behaves like a gas but with impurities and emits radiation
+        // Chance to become cloud if it rises high enough
+        if (Math.random() < 0.01) { // 1% chance each tick to spawn cloud
+            if (particle.y < game.height * cloudEndPercent && particle.y > game.height * cloudStartPercent) {
+                game.spawnParticle(particle.x, particle.y, "fallout_cloud", true);
+            }
+        }
+    },
+    reverseGravity: true,
+    gasGravity: true,
+    gasWeight: 0.3,
+    defaultTemp: 120,
+    tempTransferRate: 0.15,
+    freezingPoint: 100, // When steam cools down to 100C or below, it turns to water
+    freezingResult: "falloutwater",
+    state: "gas",
+    category: "Gases",
+    luminosity: true, // Apply the effect to make it look more diffuse
+    weight: -0.1, // Lighter than water
+    explosionResistance: 0.0 // ...
+});
+powderTypes.addToTag("fallout_steam", "ai_danger")
+powderTypes.register("poison", {
+    name: "Poison",
+    color: "#8e11bc",
+    colorVariation: 0.1,
+    behavior: liquidBehavior, // Toxic liquid that kills creatures (but creatures run away from it)
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    state: "liquid",
+    category: "Special",
+    weight: 0.1,
+});
+powderTypes.addToTag("poison", "ai_kill") // If a creature touches poison, it dies.
+powderTypes.register("fallout_cloud", {
+    name: "Fallout Cloud",
+    color: "#1e5f3a",
+    colorVariation: 0.1,
+    behavior: (game, particle) => {
+        falloutBehavior(game, particle, cloudBehavior);
+        // Chance to emit radiation particles within the cloud
+        if (Math.random() < 0.01) { // 1% chance each tick to emit radiation
+            const directionX = n101random();
+            const directionY = n101random();
+            if (game.isFree(particle.x + directionX, particle.y + directionY)) {
+                game.spawnParticle(particle.x + directionX, particle.y + directionY, "radiation");
+            }
+        }
+        // Another 1% chance to become fallout water OR fallout
+        if (Math.random() < 0.01) {
+            // Most of the time retain water
+            if (Math.random() < 0.25) {
+                game.spawnParticle(particle.x, particle.y, "fallout", true);
+            } else {
+                game.spawnParticle(particle.x, particle.y, "falloutwater", true);
+            }
+        }
+    },
+    defaultTemp: 100,
+    tempTransferRate: 0.1,
+    state: "gas",
+    category: "Gases",
+    luminosity: true, // Apply the effect to make it look more diffuse
+    weight: -0.2, // Lighter than fallout steam, rises faster
+    reactions: [
+        {
+            with: "water",
+            result: "falloutwater",
+            chance: 0.5,
+            secondResult: "fallout" // When fallout cloud reacts with water, it has a chance to create fallout particles in addition to fallout water
+        }
+    ],
+    explosionResistance: 0.0 // ...
+})
+powderTypes.addToTag("fallout_cloud", "ai_danger")
+// Please try not to make the comments with life stuff NOT
+// very gruesome :X
+powderTypes.register("blood", { // Blood, emitted by killed creatures
+    name: "Blood",
+    color: "#8a0303",
+    colorVariation: 0.1,
+    behavior: liquidBehavior,
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    state: "powder",
+    category: "Life",
+    weight: 0.5,
+    meltingPoint: 110, // When blood heats up to 110C or above, it turns into blood steam
+    meltingResult: "blood_steam",
+    freezingPoint: -5, // When blood cools down to -5C or below, it turns into blood ice
+    freezingResult: "blood_ice",
+    explosionResistance: 0.0, // Nope.
+});
+powderTypes.register("blood_steam", { // When blood heats up, it turns into a steam that can spread out and rise, but still has the same color and properties as blood
+    name: "Blood Steam",
+    color: "#8a0303",
+    colorVariation: 0.1,
+    behavior: gasBehavior, // Blood steam, created when blood heats up, behaves like a gas but retains the same color and properties as blood
+    defaultTemp: 130,
+    tempTransferRate: 0.05,
+    state: "gas",
+    category: "Life",
+    weight: 0.5,
+    luminosity: true, // Apply the effect to make it look more diffuse like steam
+    reverseGravity: true,
+    gasGravity: true,
+    gasWeight: 0.4,
+    freezingPoint: 110, // When blood steam cools down to 110C or below, it turns back into blood
+    freezingResult: "blood",
+    explosionResistance: 0.0, // Still nope.
+});
+powderTypes.register("blood_ice", { // When blood cools down, it turns into ice
+    name: "Blood Ice",
+    color: "#8a0303",
+    colorVariation: 0.1,
+    behavior: solidBehavior, // Blood ice, created when blood cools down, behaves like a solid but retains the same color and properties as blood
+    defaultTemp: -10,
+    tempTransferRate: 0.05,
+    state: "solid",
+    category: "Life",
+    weight: 0.5,
+    meltingPoint: -5, // When blood ice heats up to -5C or above, it turns back into blood
+    meltingResult: "blood",
+    explosionResistance: 0.0, // Still nope.
+});
+// If it sees blood it thinks a creature would have died there, so danger
+powderTypes.addToTag("blood", "ai_danger")
+powderTypes.addToTag("blood_steam", "ai_danger")
+powderTypes.addToTag("blood_ice", "ai_danger")
+powderTypes.register("rat", {
+    name: "Rat",
+    color: "#4e4444",
+    colorVariation: 0.2,
+    behavior: landCreatureBehavior,
+    onSpawn: creatureOnSpawn,
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    state: "gas", // Never stable to platform on.
+    category: "Life",
+    weight: 0.5,
+    freezingPoint: 10, // Dies at 10C or below, turning into blood
+    freezingResult: "blood",
+    meltingPoint: 40, // Dies at 40C or above, turning into blood
+    meltingResult: "blood",
+    crushResult: "blood", // When a rat is crushed (like by a tool), it turns into blood to represent the mess created from crushing the creature
+    flammability: 0.01, // Flammable, Can only IMAGINE what players will do with this
+    explosionResistance: 0.0 // Why would you even intentionally do this
+});
+powderTypes.register("bird", {
+    name: "Bird",
+    color: "#412b1e",
+    colorVariation: 0.2,
+    behavior: flyingCreatureBehavior,
+    onSpawn: creatureOnSpawn,
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    state: "gas", // Never stable to platform on.
+    category: "Life",
+    weight: 0.3,
+    freezingPoint: 10, // Dies at 10C or below, turning into blood
+    freezingResult: "blood",
+    meltingPoint: 40, // Dies at 40C or above, turning into blood
+    meltingResult: "blood",
+    crushResult: "blood",
+    flammability: 0.01, // Also flammable, because i want to EMBRACE the chaos >:)
+    explosionResistance: 0.0 // Why, i ask.
 });
 powderTypes.register("pyrocumulus", {
     name: "Pyrocumulus Cloud",
@@ -1290,7 +2176,10 @@ powderTypes.register("pyrocumulus", {
     category: "Gases",
     luminosity: true, // Apply the effect to make it look more diffuse
     weight: 0.2, // Lighter than regular clouds due to intense heat, so swaps with other clouds more easily to rise higher in the sky
+    explosionResistance: 0.0 // ITS A CLOUD 💔
 });
+powderTypes.addToTag("pyrocumulus", "ai_danger")
+powderTypes.addToTag("#molten", "ai_kill") // Molten stuff with kill creatures
 powderTypes.register("cloud", {
     name: "Cloud",
     color: "#d2d8d8",
@@ -1305,7 +2194,8 @@ powderTypes.register("cloud", {
     meltingResult: PowderTypes.STEAM,
     category: "Gases",
     luminosity: true, // Apply the effect to make it look more diffuse
-    weight: 0.1 // Lighter than regular clouds
+    weight: 0.1, // Lighter than regular clouds
+    explosionResistance: 0.0 // Still a cloud.
 });
 powderTypes.register("wetsand", {
     name: "Wet Sand",
@@ -1318,7 +2208,8 @@ powderTypes.register("wetsand", {
     meltingResult: PowderTypes.SAND,
     state: "powder",
     category: "Powders",
-    weight: 1.5 // Heavier than regular sand due to water content
+    weight: 1.5, // Heavier than regular sand due to water content
+    explosionResistance: 0.1 // Slightly resistant to explosions, You can try.
 });
 powderTypes.register("lava", {
     name: "Lava",
@@ -1332,8 +2223,10 @@ powderTypes.register("lava", {
     freezingResult: PowderTypes.STONE,
     state: "liquid",
     category: "Fluids",
-    weight: 2 // Heavier than water
+    weight: 2, // Heavier than water
+    explosionResistance: 0.2 // Slightly resistant to explosions, can withstand some damage
 });
+powderTypes.addToTag("lava", "molten")
 powderTypes.register(PowderTypes.STONE, {
     name: "Stone",
     color: "#808080",
@@ -1348,7 +2241,265 @@ powderTypes.register(PowderTypes.STONE, {
     category: "Powders",
     weight: 2, // Heavier than sand, same weight as lava for magma.
     crushResult: "gravel", // When stone is crushed (like by a tool), it has a chance to turn into gravel instead of just being removed
+    explosionResistance: 0.5 // Stone can resist explosions to some extent, reducing their damage by 0.5 units
 });
+powderTypes.register("packed_stone", {
+    name: "Packed Stone",
+    color: "#626262",
+    colorVariation: 0.1,
+    behavior: solidBehavior, // Solid version of stone
+    defaultTemp: 22,
+    tempTransferRate: 0.02,
+    cliffable: true,
+    meltingPoint: 2000, // When packed stone heats up to 2000C or above, it turns to lava
+    meltingResult: "lava",
+    state: "solid",
+    category: "Solids",
+    weight: 2.5, // Heavier than stone due to it being compacted
+    crushResult: "stone", // When packed stone is crushed (like by a tool), it has a chance to turn into stone instead of just being removed
+    explosionResistance: 0.75 // Packed stone can resist explosions better than regular stone, reducing their damage by 0.75 units
+});
+powderTypes.register("glass", {
+    name: "Glass",
+    color: "#a0c8f0",
+    colorVariation: 0.1,
+    behavior: solidBehavior, // A transparent solid that can be melted by heat
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    meltingPoint: 1400, // When glass heats up to 1400C or above, it turns to liquid glass
+    meltingResult: "liquid_glass",
+    state: "solid",
+    category: "Solids",
+    weight: 2,
+    crushResult: "glass_shard", // When glass is crushed (like by a tool), it has a chance to turn into a glass shard (representing the sharp pieces created from breaking the glass).
+    explosionResistance: 0.01 // Why would this ever work?
+});
+powderTypes.register("oxygen", {
+    name: "Oxygen",
+    color: "#99d9ea",
+    colorVariation: 0.1,
+    behavior: gasBehavior, // Oxygen gas, supports combustion and can react with certain materials
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    reactions: [
+        {
+            with: "fire",
+            result: "fire",
+            secondResult: "fire", // When oxygen reacts with fire, it has a chance to create more fire particles to represent the combustion process
+            chance: 0.5 // When oxygen reacts with fire, it has a chance to create more fire particles to represent the combustion process
+        }
+    ],
+    state: "gas",
+    category: "Gases",
+    weight: -0.2, // Lighter than water, so it rises and can swap with other gases to reach the top of the sky
+    gasGravity: false, // Not affected by gravity, to make it diffuse in the air
+    explosionResistance: 0.0, // The hell you gonna do with OXYGEN
+    luminosity: true // Apply the effect to make it look more diffuse in the air, like oxygen is invisible but still has a presence
+});
+powderTypes.register("carbon_dioxide", {
+    name: "Carbon Dioxide",
+    color: "#6d6d6d",
+    colorVariation: 0.1,
+    behavior: gasBehavior, // Carbon dioxide gas, heavier than oxygen and can react with certain materials
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    state: "gas",
+    category: "Gases",
+    weight: 0.2, // Heavier than oxygen, so it sinks and can displace other gases
+    gasGravity: true, // Sinks to the ground
+    gasWeight: 0.2, // Heavier than oxygen, so it sinks and can displace other gases
+    explosionResistance: 0.0, // The hell you gonna do with CARBON DIOXIDE
+    luminosity: true // Apply the effect to make it look more diffuse in the air, like carbon dioxide is invisible but still has a presence
+});
+powderTypes.register("dead_plant", {
+    name: "Dead Plant",
+    color: "#654321",
+    colorVariation: 0.1,
+    behavior: powderBehavior, // Dead plant matter
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    state: "powder",
+    category: "Life",
+    weight: 0.3,
+    crushResult: "dirt", // When dead plant matter is crushed (like by a tool), it has a chance to turn into dirt to represent the decomposition process
+    explosionResistance: 0.05 // Slightly resistant to explosions, can withstand some damage
+});
+powderTypes.register("dirt", {
+    name: "Dirt",
+    color: "#453425",
+    colorVariation: 0.2,
+    behavior: powderBehavior, // Dirt, can be created from crushing dead plant matter
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    state: "powder",
+    category: "Powders",
+    weight: 1.0, // As heavy as sand, Mixes in well and can support creatures
+    reactions: [
+        {
+            with: PowderTypes.WATER,
+            result: "mud",
+            chance: 0.5 // When dirt reacts with water, it has a chance to turn into mud to represent the process of the water saturating the dirt
+        }
+    ],
+    explosionResistance: 0.05 // Slightly resistant to explosions, can withstand some damage
+});
+powderTypes.register("mud", {
+    name: "Mud",
+    color: "#5a3e1b",
+    colorVariation: 0.1,
+    behavior: liquidBehavior, // Mud behaves like a liquid but can also have reactions to represent the wetness
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    state: "liquid",
+    category: "Fluids",
+    weight: 0.99, // Make mud go on top of dirt
+    explosionResistance: 0.1 // Slightly resistant to explosions, can withstand some damage
+});
+powderTypes.addToTag("dirt", "growable")
+powderTypes.addToTag("dead_plant", "growable")
+powderTypes.addToTag("dead_plant", "edible") // Creatures can eat dead plants.
+powderTypes.addToTag("mud", "growable") // You can grow plants on mud, because it's wet and has nutrients
+function plantLivableCheck(game: Powders, particle: Particle, mustBeOn: string) {
+    const canBeOn = game.processTypeId(mustBeOn);
+    const adjacent = game.getAdjacentParticles(particle.x, particle.y);
+    for (const adj of adjacent) {
+        if (adj && canBeOn.includes(adj.type ?? "")) {
+            return true;
+        }
+    }
+    return false;
+}
+function plantDieNotLivable(game: Powders, particle: Particle, mustBeOn: string) {
+    if (!plantLivableCheck(game, particle, mustBeOn)) {
+        game.spawnParticle(particle.x, particle.y, "dead_plant", true); // If the plant is not on a valid type, it dies and turns into dead plant matter
+    }
+}
+powderTypes.register("grass", {
+    name: "Grass",
+    color: "#228B22",
+    colorVariation: 0.1,
+    behavior: (game, particle) => {
+        solidBehavior(game, particle); // Grass behaves like a solid to allow creatures to stand on it
+        // Chance to spread to adjacent growable particles
+        if (Math.random() < 0.05) { // 5% chance each tick to try spreading
+            const growDirectionX = n101random() // Pick random direction to grow in
+            const sideParticle = game.getParticle(particle.x + growDirectionX, particle.y);
+            if (sideParticle && powderTypes.isTagged(sideParticle.type ?? "", "growable") && game.isFree(particle.x + growDirectionX, particle.y - 1)) {
+                game.spawnParticle(particle.x + growDirectionX, particle.y, "grass", true);
+            } else {
+                const belowParticle = game.getParticle(particle.x + growDirectionX, particle.y + 1);
+                if (belowParticle && powderTypes.isTagged(belowParticle.type ?? "", "growable") && game.isFree(particle.x + growDirectionX, particle.y)) {
+                    game.spawnParticle(particle.x + growDirectionX, particle.y + 1, "grass", true);
+                } else {
+                    const aboveParticle = game.getParticle(particle.x + growDirectionX, particle.y - 1);
+                    if (aboveParticle && powderTypes.isTagged(aboveParticle.type ?? "", "growable") && game.isFree(particle.x + growDirectionX, particle.y - 2)) {
+                        game.spawnParticle(particle.x + growDirectionX, particle.y - 1, "grass", true);
+                    }
+                }
+            }
+        }
+        plantDieNotLivable(game, particle, "#growable"); // Has to be on something tagged with growable
+    },
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    state: "solid",
+    category: "Life",
+    weight: 0.9, // Similar to dirt, same for most plants (Stops creatures from swapping)
+    explosionResistance: 0.05, // Slightly resistant to explosions, can withstand some damage
+    flammability: 0.05, // Flammable, can catch fire and burn away
+    burnInto: "ash", // When grass burns, it turns into ash to represent the remains of the burnt plant
+    crushResult: "dead_plant" // Crushes into dead plants, which can then become dirt
+});
+powderTypes.addToTag("grass", "edible")
+powderTypes.addToTag("grass", "growable") // Plants can grow from grass (also grass can override grass).
+powderTypes.register("salt", {
+    name: "Salt",
+    color: "#ffffff",
+    colorVariation: 0.1,
+    behavior: powderBehavior, // Salt behaves like a powder
+    defaultTemp: 22,
+    tempTransferRate: 0.02,
+    state: "powder",
+    category: "Powders",
+    weight: 1.0, // Similar to sand
+    explosionResistance: 0.1, // Slightly resistant to explosions
+    reactions: [
+        {
+            with: PowderTypes.WATER,
+            result: "salt_water",
+            chance: 0.5 // When salt reacts with water, it has a chance to create salt water to represent the process of the salt dissolving in the water
+        }
+    ]
+});
+powderTypes.register("salt_water", {
+    name: "Salt Water",
+    color: "#a0c8f0",
+    colorVariation: 0.1,
+    behavior: liquidBehavior, // Salt water behaves like a liquid but is heavier than regular water due to the salt content
+    defaultTemp: 22,
+    tempTransferRate: 0.1,
+    meltingPoint: 100, // When salt water heats up to 100C or above, it turns to steam
+    meltingResult: PowderTypes.STEAM,
+    meltingResultSecond: "salt", // When salt water heats up to 100C or above, it also has a chance to leave behind salt particles to represent the salt residue left after evaporation
+    freezingPoint: -5, // When salt water cools down to -5C or below, it turns to ice
+    freezingResult: "salt_ice",
+    state: "liquid",
+    category: "Fluids",
+    weight: 0.5, // Heavier than regular water due to salt content
+    explosionResistance: 0.0, // Not resistant to explosions
+    reactions: [
+        {
+            with: PowderTypes.SAND,
+            result: "wetsand",
+            secondResult: "salt", // When salt water reacts with sand, it has a chance to leave behind salt particles to represent the salt residue left in the sand
+            chance: 0.5 // When salt water reacts with sand, it has a chance to turn the sand into wet sand to represent the process of the water saturating the sand
+        }
+    ]
+});
+powderTypes.register("salt_ice", {
+    name: "Salt Ice",
+    color: "#6e9ac5",
+    colorVariation: 0.1,
+    behavior: solidBehavior, // Salt ice, created when salt water cools down, behaves like a solid but is heavier than regular ice due to the salt content
+    defaultTemp: -10,
+    tempTransferRate: 0.1,
+    state: "solid",
+    category: "Solids",
+    weight: 0.5, // Heavier than regular ice due to salt content
+    meltingPoint: -5, // When salt ice heats up to -5C or above, it turns back into salt water
+    meltingResult: "salt_water",
+    explosionResistance: 0.0 // Not resistant to explosions
+});
+powderTypes.register("liquid_glass", {
+    name: "Liquid Glass",
+    color: "#ff9900",
+    colorVariation: 0.1,
+    behavior: liquidBehavior, // Molten glass, behaves like a liquid but can solidify back into glass when cooled
+    defaultTemp: 1500,
+    tempTransferRate: 0.1,
+    freezingPoint: 1400, // When liquid glass cools down to 1400C or below, it solidifies back into glass
+    freezingResult: "glass",
+    state: "liquid",
+    category: "Fluids",
+    weight: 2,
+    luminosity: true, // Molten glass emits light
+    explosionResistance: 0.0 // Literally worse than normal glass
+});
+powderTypes.addToTag("liquid_glass", "molten")
+powderTypes.register("glass_shard", {
+    name: "Glass Shard",
+    color: "#a0c8f0",
+    colorVariation: 0.2,
+    behavior: powderBehavior, // A shard of glass that can be created from crushing glass, behaves like a powder but heavier than regular glass due to its sharp shape
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    state: "powder",
+    category: "Powders",
+    weight: 2.1, // Heavier than regular glass due to its sharp shape
+    explosionResistance: 0.005, // Why, just why.
+});
+powderTypes.addToTag("glass_shard", "ai_danger")
+
 powderTypes.register("gravel", {
     name: "Gravel",
     color: "#606060",
@@ -1358,6 +2509,7 @@ powderTypes.register("gravel", {
     state: "powder",
     category: "Powders",
     weight: 1.2, // Heavier than sand but lighter than stone
+    explosionResistance: 0.15 // At least you are thinking better now
 });
 powderTypes.register(PowderTypes.WATER, {
     name: "Water",
@@ -1373,7 +2525,8 @@ powderTypes.register(PowderTypes.WATER, {
     category: "Fluids",
     freezingPoint: 0, // When water cools down to 0C or below, it turns to ice
     freezingResult: "ice",
-    weight: 0 // Waters weight
+    weight: 0, // Waters weight
+    explosionResistance: 0.0 // Water is not resistant to explosions
 });
 powderTypes.register(PowderTypes.BEDROCK, {
     name: "Bedrock",
@@ -1388,7 +2541,8 @@ powderTypes.register(PowderTypes.BEDROCK, {
     state: "solid",
     category: "Solids",
     weight: 5, // Heaviest material in the game
-    crushResult: "stone", // Bedrock becomes stone when crushed.
+    crushResult: "packed_stone", // Bedrock becomes packed stone when crushed.
+    explosionResistance: 2.0 // Actually decent choice this time
 });
 // Indestructible wall that cannot transfer heat for building
 powderTypes.register("wall", {
@@ -1403,6 +2557,7 @@ powderTypes.register("wall", {
     category: "Special",
     weight: 9999, // Effectively immovable
     crushResult: null, // Wall cannot be crushed
+    explosionResistance: 9999 // Wall is virtually indestructible, Made the best choice
 });
 powderTypes.register(PowderTypes.STEAM, {
     name: "Steam",
@@ -1427,8 +2582,10 @@ powderTypes.register(PowderTypes.STEAM, {
     state: "gas",
     category: "Gases",
     luminosity: true, // Apply the effect to make it look more diffuse
-    weight: -0.1 // Lighter than water
+    weight: -0.1, // Lighter than water
+    explosionResistance: 0.0 // ...
 });
+powderTypes.addToTag("steam", "ai_danger")
 powderTypes.register(PowderTypes.LASER, {
     name: "Laser",
     color: "#FF0000",
@@ -1440,6 +2597,7 @@ powderTypes.register(PowderTypes.LASER, {
     state: "energy",
     category: "Energy",
     weight: -1, // Energy has no weight.
+    explosionResistance: 0.0 // Why would a beam of light EVER save you from an explosion?
 });
 powderTypes.register("smoke", {
     name: "Smoke",
@@ -1467,8 +2625,10 @@ powderTypes.register("smoke", {
     state: "gas",
     category: "Gases",
     luminosity: true, // Apply the effect to make it look more diffuse
-    weight: 0.1 // Lighter than regular clouds
+    weight: 0.1, // Lighter than regular clouds
+    explosionResistance: 0.0 // Just smoke bro.
 });
+powderTypes.addToTag("smoke", "ai_danger")
 powderTypes.register("fire", {
     name: "Fire",
     color: "#ffb300",
@@ -1498,6 +2658,15 @@ powderTypes.register("fire", {
             ],
             tempRatio
         );
+        const adjacent = game.getAdjacentParticles(particle.x, particle.y);
+        for (const adjacentParticle of adjacent) {
+            if (adjacentParticle.type === null) continue;
+            if (adjacentParticle.type === "water" && Math.random() < 0.5) {
+                game.removeParticle(adjacentParticle.x, adjacentParticle.y);
+            } else if (powderTypes.require(adjacentParticle.type!).flammability && Math.random() < 0.3) {
+                adjacentParticle.lightOnFire();
+            }
+        }
     },
     defaultTemp: 600,
     tempTransferRate: 0.3,
@@ -1506,7 +2675,58 @@ powderTypes.register("fire", {
     freezingResult: "smoke",
     state: "gas",
     category: "Energy",
-    weight: -0.2 // Lighter than steam
+    weight: -0.2, // Lighter than steam
+    explosionResistance: 0.0 // Isnt this literally triggering the explosion???
+});
+powderTypes.addToTag("fire", "ai_danger")
+powderTypes.register("plasma", {
+    name: "Plasma",
+    color: "#9900ff",
+    colorVariation: 0.1,
+    behavior: (game, particle) => {
+        staticEnergyBehavior(game, particle);
+        if (particle.temp < 1000) { // Dissapear if too cold
+            game.removeParticle(particle.x, particle.y);
+            return;
+        }
+        const adjacent = game.getAdjacentParticles(particle.x, particle.y);
+        for (const adjacentParticle of adjacent) {
+            if (adjacentParticle.type === null) continue;
+            if (powderTypes.require(adjacentParticle.type!).flammability && Math.random() < 0.5) {
+                adjacentParticle.lightOnFire();
+            }
+        }
+    }, // Super hot ionized gas, behaves like an energy that can transfer heat and ignite flammable materials on contact
+    defaultTemp: 5000,
+    tempTransferRate: 0.5,
+    reactions: [
+        {
+            with: "fire",
+            result: "plasma",
+            chance: 0.5 // When plasma reacts with fire, it has a chance to create more plasma particles to represent the intense energy of the reaction
+        }
+    ],
+    luminosity: true,
+    state: "energy",
+    category: "Energy",
+    weight: -1, // Energy has no weight.
+    explosionResistance: 0.0, // You are gonna die to the plasma before the explosion 🥀
+});
+powderTypes.addToTag("plasma", "ai_danger")
+powderTypes.register("coal", {
+    name: "Coal",
+    color: "#2b2b2b",
+    colorVariation: 0.1,
+    behavior: solidBehavior, // A solid fuel source that can be burned to create fire
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    flammability: 0.01, // Can catch fire, but doesnt produce too much fire (Good fuel!)
+    meltingPoint: 1000, // When coal heats up to 1000C or above, it turns to fire
+    meltingResult: "fire",
+    state: "solid",
+    category: "Solids",
+    weight: 1.5,
+    explosionResistance: 0.1 // Okay, thinking again.
 });
 powderTypes.register("radiation", { // Generic radiation particle, does pretty much nothing
     name: "Radiation",
@@ -1524,7 +2744,9 @@ powderTypes.register("radiation", { // Generic radiation particle, does pretty m
     state: "energy",
     category: "Energy",
     weight: -1, // Energy has no weight.
+    explosionResistance: 0.0 // WHAT THE HELL ARE YOU DOING
 });
+powderTypes.addToTag("radiation", "ai_kill")
 powderTypes.register("crusher", {
     name: "Crusher",
     color: "#888888",
@@ -1542,7 +2764,10 @@ powderTypes.register("crusher", {
     category: "Special",
     weight: 9999, // Effectively immovable
     crushResult: null, // Crusher cannot be crushed
+    explosionResistance: 2.0 // Pray you dont get thrown to the wall.
 });
+powderTypes.addToTag("crusher", "ai_danger")
+// Already kills via crushing, no need to add to ai_kill
 powderTypes.register("dust", {
     name: "Dust",
     color: "#aaaaaa",
@@ -1554,6 +2779,9 @@ powderTypes.register("dust", {
     category: "Special",
     weight: -0.9, // Super light, most gases can swap with it, making it rise.
     crushResult: null, // Dust cannot be crushed
+    // Explosive dust (producing fire every tick while burning)
+    flammability: 1.0, // Dust can catch fire, creating a small explosion and turning into smoke
+    explosionResistance: 0.0 // ..really
 });
 // Same as regular dust, but with the properties of fallout
 powderTypes.register("radioactive_dust", {
@@ -1567,7 +2795,10 @@ powderTypes.register("radioactive_dust", {
     category: "Special",
     weight: -0.9, // Super light, most gases can swap with it, making it rise.
     crushResult: null, // Dust cannot be crushed
+    explosionResistance: 0.0 // Same thing as dust.
 });
+powderTypes.addToTag("radioactive_dust", "ai_danger")
+// Vanilla tools
 toolTypes.register("heat", {
     name: "Heat Tool",
     color: "#ff0000",
@@ -1581,6 +2812,32 @@ toolTypes.register("heat", {
     },
     onTick: true,
 });
+toolTypes.register("superheat", {
+    name: "Superheat Tool",
+    color: "#ff4000",
+    action: (game, x, y) => {
+        if (!game.mouseLeftDown) return;
+        const halfBrushSize = Math.floor(game.brushSize / 2);
+        const particles = game.getParticlesInSquare(x - halfBrushSize, y - halfBrushSize, game.brushSize, game.brushSize);
+        for (const particle of particles) {
+            particle.temp += game.intensifyBrush ? 200 : 100; // Increase temperature by 100 or 200 degrees Celsius per tick
+        }
+    },
+    onTick: true,
+});
+toolTypes.register("supercool", {
+    name: "Supercool Tool",
+    color: "#0095ff",
+    action: (game, x, y) => {
+        if (!game.mouseLeftDown) return;
+        const halfBrushSize = Math.floor(game.brushSize / 2);
+        const particles = game.getParticlesInSquare(x - halfBrushSize, y - halfBrushSize, game.brushSize, game.brushSize);
+        for (const particle of particles) {
+            particle.temp -= game.intensifyBrush ? 200 : 100; // Decrease temperature by 100 or 200 degrees Celsius per tick
+        }
+    },
+    onTick: true,
+});
 toolTypes.register("cool", {
     name: "Cool Tool",
     color: "#0000ff",
@@ -1589,7 +2846,7 @@ toolTypes.register("cool", {
         const halfBrushSize = Math.floor(game.brushSize / 2);
         const particles = game.getParticlesInSquare(x - halfBrushSize, y - halfBrushSize, game.brushSize, game.brushSize);
         for (const particle of particles) {
-            particle.temp -= game.intensifyBrush ? 20 : 10; // Decrease temperature.
+            particle.temp -= game.intensifyBrush ? 20 : 10; // Decrease temperature by 10 or 20 degrees Celsius per tick
         }
     },
     onTick: true
