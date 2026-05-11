@@ -759,6 +759,10 @@ export class Powders {
         this.resize(this.canvas.width, this.canvas.height, false);
     }
 
+    public mouseInBounds(): boolean {
+        return this.mouseX >= 0 && this.mouseX < this.canvas.width && this.mouseY >= 0 && this.mouseY < this.canvas.height;
+    }
+
     public getSettingsDict(): { [key: string]: any } {
         return {
             disableAi: this.disableAi,
@@ -907,6 +911,10 @@ export class Powders {
             const coords = screenToCanvas(this.canvas, e.clientX, e.clientY);
             this.mouseX = coords.x;
             this.mouseY = coords.y;
+            if (!this.mouseInBounds()) {
+                mouseUp(e); // If mouse is out of bounds, cancel the click to prevent issues with dragging outside of the canvas
+                return;
+            }
         }
         document.addEventListener("mousedown", mouseDown);
         document.addEventListener("contextmenu", (e) => {
