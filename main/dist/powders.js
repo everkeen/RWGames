@@ -658,6 +658,10 @@ export class Powders {
     constructor() {
         console.log("Powders game initialized!");
         this.canvas = document.getElementById("game-canvas");
+        // Quick phone UI change on the canvas (For larger canvas)
+        if (window.innerWidth < window.innerHeight && window.innerHeight >= 1000) { // More space for controls below, use larger canvas
+            this.canvas.classList.add("mobile");
+        }
         const context = this.canvas.getContext("2d");
         if (!context) {
             throw new Error("Failed to get 2D context");
