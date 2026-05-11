@@ -1,20 +1,19 @@
 export class Particle {
-    x: number;
-    y: number;
-    type: string | null;
-    directionX: number; // Direction X for energy
-    directionY: number; // Direction Y for energy
-    deco: string | null; // For visual variations, like different sand colors
-    temp: number; // For temperature-based interactions
-    bvs1: number = 0; // Shared Behavior Value 1, not affected by game, only behaviors
-    bvs2: number = 0; // Shared Behavior Value 2, not affected by game, only behaviors
-    bvs3: number = 0; // Shared Behavior Value 3, not affected by game, only behaviors
-    bvs4: number = 0; // Shared Behavior Value 4, not affected by game, only behaviors
-    bvs5: number = 0; // Shared Behavior Value 5, not affected by game, only behaviors
-    life: number = 0; // For aging particles, not affected by game, only behaviors
-    onFire: boolean = false; // Whether this particle is currently on fire or not
-
-    constructor(x: number, y: number, type: string | null, directionX: number = 0, directionY: number = 0) {
+    x;
+    y;
+    type;
+    directionX; // Direction X for energy
+    directionY; // Direction Y for energy
+    deco; // For visual variations, like different sand colors
+    temp; // For temperature-based interactions
+    bvs1 = 0; // Shared Behavior Value 1, not affected by game, only behaviors
+    bvs2 = 0; // Shared Behavior Value 2, not affected by game, only behaviors
+    bvs3 = 0; // Shared Behavior Value 3, not affected by game, only behaviors
+    bvs4 = 0; // Shared Behavior Value 4, not affected by game, only behaviors
+    bvs5 = 0; // Shared Behavior Value 5, not affected by game, only behaviors
+    life = 0; // For aging particles, not affected by game, only behaviors
+    onFire = false; // Whether this particle is currently on fire or not
+    constructor(x, y, type, directionX = 0, directionY = 0) {
         this.x = x;
         this.y = y;
         this.type = type;
@@ -23,7 +22,8 @@ export class Particle {
         if (type) {
             const powderType = powderTypes.require(type);
             this.temp = powderType.defaultTemp ?? 22;
-        } else {
+        }
+        else {
             this.temp = 22; // Room temperature as default for ambient temperature
         }
         this.deco = null;
@@ -35,10 +35,9 @@ export class Particle {
             }
         }
     }
-
-    public generateColorVariation(): string {
+    generateColorVariation() {
         // Simple color variation by adjusting the HSV values randomly within the variation range
-        const type = powderTypes.require(this.type!);
+        const type = powderTypes.require(this.type);
         const baseColor = type.color;
         const variation = type.colorVariation;
         const r = Math.min(255, Math.max(0, parseInt(baseColor.slice(1, 3), 16)));
@@ -57,61 +56,27 @@ export class Particle {
         let newRHex = Math.round(value * 2.55 * (1 - saturation / 100) + (saturation / 100) * 255 * Math.cos(hue * Math.PI / 180));
         let newGHex = Math.round(value * 2.55 * (1 - saturation / 100) + (saturation / 100) * 255 * Math.cos((hue - 120) * Math.PI / 180));
         let newBHex = Math.round(value * 2.55 * (1 - saturation / 100) + (saturation / 100) * 255 * Math.cos((hue - 240) * Math.PI / 180));
-        if (isNaN(newRHex)) newRHex = r;
-        if (isNaN(newGHex)) newGHex = g;
-        if (isNaN(newBHex)) newBHex = b;
-        if (newRHex < 0) newRHex = 0;
-        if (newGHex < 0) newGHex = 0;
-        if (newBHex < 0) newBHex = 0;
+        if (isNaN(newRHex))
+            newRHex = r;
+        if (isNaN(newGHex))
+            newGHex = g;
+        if (isNaN(newBHex))
+            newBHex = b;
+        if (newRHex < 0)
+            newRHex = 0;
+        if (newGHex < 0)
+            newGHex = 0;
+        if (newBHex < 0)
+            newBHex = 0;
         return `#${newRHex.toString(16).padStart(2, '0')}${newGHex.toString(16).padStart(2, '0')}${newBHex.toString(16).padStart(2, '0')}`;
     }
-
-    public lightOnFire() {
+    lightOnFire() {
         if (!this.onFire) {
             this.onFire = true;
         }
     }
 }
-
-interface ParticleReaction {
-    with: string; // The type of particle this reacts with
-    result: string | null; // The resulting particle type after the reaction, or null to destroy both
-    secondResult?: string | null; // Optional resulting particle type for the second particle, if not defined it will not produce another particle
-    chance: number; // Chance of the reaction occurring (0-1)
-    behavior?: (game: Powders, particle: Particle, otherParticle: Particle) => void; // Optional custom behavior for the reaction, if not defined it will just spawn the result particle at the location of the first particle
-}
-
-interface PowderType {
-    name: string;
-    color: string;
-    burnInto?: string | null; // What does this type burn into
-    ignitionPoint?: number; // What temperature does this ignite (for flammable types)
-    colorVariation: number; // 0-1, how much the color can vary randomly
-    behavior: (game: Powders, particle: Particle) => void;
-    onSpawn?: (game: Powders, particle: Particle) => void; // Optional behavior that runs only when the particle is first spawned, not every tick like the main behavior
-    reverseGravity?: boolean; // Make it move up instead of down
-    gasGravity?: boolean; // Makes gasses prefer to move with gravity instead of diffuse
-    gasWeight?: number; // For gasses, how much they are affected by gravity if enabled (0-1)
-    defaultTemp?: number; // Default temperature for the powder, used in interactions
-    tempTransferRate?: number; // How quickly the particle transfers heat to adjacent particles, default is 0.1 (10% per tick)
-    luminosity?: boolean; // Whether the particle "glows" or not.
-    state: "solid" | "liquid" | "gas" | "energy" | "powder"; // For categorization, not used in behavior but can be used for interactions or future features.
-    cliffable?: boolean; // Whether the particle can be used by platforming particles as a stable surface or not.
-    reactions?: ParticleReaction[]; // List of reactions this particle can have with other particles
-    meltingPoint?: number | null; // When does this melt/evaporate based on temperature (null for never).
-    meltingResultSecond?: string | null; // Optional second result when melting, if not defined it will not produce another particle
-    meltingResult?: string | null; // What does this turn into when it melts/evaporates, null for nothing (like steam disappearing)
-    freezingPoint?: number | null; // When does this freeze based on temperature (null for never).
-    freezingResult?: string | null; // What does this turn into when it freezes, null for nothing.
-    freezingResultSecond?: string | null; // Optional second result when freezing, if not defined it will not produce another particle
-    category: string | null; // Organizes the particle in UI categories, null to hide
-    weight: number; // For future physics features, higher weight means it will swap with particles of lower weight more often. Default is 1.
-    crushResult?: string | null; // What does this turn into when crushed, null for non-crushable.
-    flammability?: number; // Whether this particle can catch fire or not, 0 means non-flammable, 1 means produces fire every tick.
-    explosionResistance?: number; // How resistant this particle is to explosions, 0 destroys instantly and does not affect explosion, 1 blocks explosion by 1 unit (does not get damaged if current explosion power is <= resistance)
-}
-
-function isStable(game: Powders, x: number, y: number): boolean {
+function isStable(game, x, y) {
     const particle = game.getParticle(x, y);
     if (!particle || particle.type === null) {
         return false;
@@ -125,11 +90,13 @@ function isStable(game: Powders, x: number, y: number): boolean {
             return true; // Solids are always stable
         case "liquid":
             const yMultiplier = type.reverseGravity ? -1 : 1;
-            if (game.canSwap(powderTypes.getId(type)!, x, y + yMultiplier)) {
+            if (game.canSwap(powderTypes.getId(type), x, y + yMultiplier)) {
                 return false; // Not stable if it can move in its gravity direction
-            } else if (game.canSwap(powderTypes.getId(type)!, x - 1, y + yMultiplier) || game.canSwap(powderTypes.getId(type)!, x + 1, y + yMultiplier)) {
+            }
+            else if (game.canSwap(powderTypes.getId(type), x - 1, y + yMultiplier) || game.canSwap(powderTypes.getId(type), x + 1, y + yMultiplier)) {
                 return false; // Not stable if it can move diagonally in its gravity direction
-            } else if (game.canSwap(powderTypes.getId(type)!, x - 1, y) || game.canSwap(powderTypes.getId(type)!, x + 1, y)) {
+            }
+            else if (game.canSwap(powderTypes.getId(type), x - 1, y) || game.canSwap(powderTypes.getId(type), x + 1, y)) {
                 return false; // Not stable if it can move horizontally
             }
             return true; // Stable if it can't move in any of its preferred directions
@@ -140,9 +107,10 @@ function isStable(game: Powders, x: number, y: number): boolean {
         case "powder":
             // Same as liquid, but no horizontal check.
             const yMult = type.reverseGravity ? -1 : 1;
-            if (game.canSwap(powderTypes.getId(type)!, x, y + yMult)) {
+            if (game.canSwap(powderTypes.getId(type), x, y + yMult)) {
                 return false; // Not stable if it can move in its gravity direction
-            } else if (game.canSwap(powderTypes.getId(type)!, x - 1, y + yMult) || game.canSwap(powderTypes.getId(type)!, x + 1, y + yMult)) {
+            }
+            else if (game.canSwap(powderTypes.getId(type), x - 1, y + yMult) || game.canSwap(powderTypes.getId(type), x + 1, y + yMult)) {
                 return false; // Not stable if it can move diagonally in its gravity direction
             }
             return true; // Stable if it can't move in its preferred directions
@@ -150,11 +118,9 @@ function isStable(game: Powders, x: number, y: number): boolean {
             return false;
     }
 }
-
 const airTempTransferRate = 0.1; // How quickly particles transfer heat to the air and vice versa
 let powderTypesInstanceMade = false;
-
-function generateTypeButton(typeId: string, powders: Powders) {
+function generateTypeButton(typeId, powders) {
     const type = powderTypes.require(typeId);
     const button = document.createElement("button");
     button.textContent = type.name;
@@ -169,41 +135,27 @@ function generateTypeButton(typeId: string, powders: Powders) {
     };
     return button;
 }
-
 const showHiddenTypes = new URLSearchParams(window.location.search).get("showHidden") === "true";
-
-interface Tool {
-    name: string;
-    color: string;
-    action: (game: Powders, x: number, y: number) => void; // Action, runs every frame/tick
-    onTick: boolean; // Whether the action should run every tick or only on mouse events
-}
-
-function blackContrastText(color: string): boolean {
+function blackContrastText(color) {
     // Parse hex color to RGB
     const hex = color.replace("#", "");
     const r = parseInt(hex.substring(0, 2), 16);
     const g = parseInt(hex.substring(2, 4), 16);
     const b = parseInt(hex.substring(4, 6), 16);
-
     // Calculate luminance using relative luminance formula
     const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-
     // Return true if background is light (use black text), false if dark (use white text)
     return luminance > 0.5;
 }
-
 class ToolTypes {
-    registry: Map<string, Tool>;
-    list: string[] = [];
-    listElement: HTMLUListElement;
-
+    registry;
+    list = [];
+    listElement;
     constructor() {
         this.registry = new Map();
-        this.listElement = document.getElementById("tools-list") as HTMLUListElement;
+        this.listElement = document.getElementById("tools-list");
     }
-
-    public register(id: string, tool: Tool) {
+    register(id, tool) {
         this.registry.set(id, tool);
         this.list.push(id);
         const listItem = document.createElement("li");
@@ -215,11 +167,12 @@ class ToolTypes {
         }
         content.classList.add("type-button");
         content.onclick = () => {
-            const game = getGame()!;
+            const game = getGame();
             console.log(`Selected tool: ${id}`);
             if (game.selectedTool === id) {
                 game.selectedTool = null; // Deselect if clicking the same tool
-            } else {
+            }
+            else {
                 game.selectedTool = id;
             }
             console.log(`Current selected tool: ${game.selectedTool}`);
@@ -227,77 +180,67 @@ class ToolTypes {
         listItem.appendChild(content);
         this.listElement.appendChild(listItem);
     }
-
-    public get(id: string): Tool | undefined {
+    get(id) {
         return this.registry.get(id);
     }
-
-    public require(id: string): Tool {
+    require(id) {
         const tool = this.registry.get(id);
         if (!tool) {
             throw new Error(`Tool "${id}" is not registered.`);
         }
         return tool;
     }
-
-    public has(id: string): boolean {
+    has(id) {
         return this.registry.has(id);
     }
 }
-
 class PowderTypes {
-    registry: Map<string, PowderType>;
-    list: string[] = [];
-    listElement: HTMLUListElement;
-    pickerElement: HTMLDivElement;
-    selectedCategory: string | null = null;
-    categories: Map<string, HTMLDivElement> = new Map();
-    tags: Map<string, Set<string>> = new Map(); // For tagging elements.
+    registry;
+    list = [];
+    listElement;
+    pickerElement;
+    selectedCategory = null;
+    categories = new Map();
+    tags = new Map(); // For tagging elements.
     static SAND = "sand"; // Regular sand.
     static STONE = "stone"; // Powder stone, not sand.
     static WATER = "water"; // Water/H2O.
     static BEDROCK = "bedrock"; // Solid version of stone.
     static STEAM = "steam"; // Gas version of water.
     static LASER = "laser"; // Energy particle that does nothing.
-
     constructor() {
         if (powderTypesInstanceMade) {
             throw new Error("PowderTypes is a singleton and cannot be instantiated more than once.");
         }
         powderTypesInstanceMade = true;
         this.registry = new Map();
-        this.listElement = document.getElementById("categories-list") as HTMLUListElement;
-        this.pickerElement = document.getElementById("category-display") as HTMLDivElement;
+        this.listElement = document.getElementById("categories-list");
+        this.pickerElement = document.getElementById("category-display");
         this.tags.set("all", new Set());
     }
-
-    public addToTag(id: string, tag: string, strict: boolean = false) {
+    addToTag(id, tag, strict = false) {
         if (!this.tagExists(tag)) {
             if (strict) {
                 throw new Error(`Tag "${tag}" does not exist.`);
             }
             this.tags.set(tag, new Set());
         }
-        this.tags.get(tag)!.add(id);
+        this.tags.get(tag).add(id);
     }
-
-    public registerTag(tag: string) {
+    registerTag(tag) {
         if (this.tagExists(tag)) {
             throw new Error(`Tag "${tag}" already exists.`);
         }
         this.tags.set(tag, new Set());
     }
-
-    public getTag(tag: string): Set<string> | undefined {
+    getTag(tag) {
         return this.tags.get(tag);
     }
-
-    public isTagged(id: string, tag: string): boolean {
+    isTagged(id, tag) {
         return this.getAllWithTagId(tag).includes(id);
     }
-
     // Avoid ALL circular references!
-    public getAllWithTag(tag: string, previousTagsSearched: Set<string> = new Set()): PowderType[] {
+    getAllWithTag(tag, previousTagsSearched = new Set()) {
         const ids = this.getTag(tag);
         if (ids === undefined) {
             throw new Error(`Tag "${tag}" does not exist.`);
@@ -305,7 +248,7 @@ class PowderTypes {
         if (ids.size === 0) {
             return []; // Tag has nothing, dont even bother
         }
-        const types: PowderType[] = [];
+        const types = [];
         for (const id of ids) {
             if (id.startsWith("#")) {
                 const nestedTag = id.substring(1);
@@ -317,7 +260,8 @@ class PowderTypes {
                 }
                 const nestedTypes = this.getAllWithTag(nestedTag, new Set(previousTagsSearched).add(tag));
                 types.push(...nestedTypes);
-            } else {
+            }
+            else {
                 const type = this.get(id);
                 if (type) {
                     types.push(type);
@@ -326,47 +270,44 @@ class PowderTypes {
         }
         return types;
     }
-
-    public getAllWithTagId(tag: string): string[] {
+    getAllWithTagId(tag) {
         const types = this.getAllWithTag(tag);
-        return types.map(type => this.getId(type)).filter(id => id !== undefined) as string[];
+        return types.map(type => this.getId(type)).filter(id => id !== undefined);
     }
-
-    public tagExists(tag: string): boolean {
+    tagExists(tag) {
         return this.tags.has(tag);
     }
-
-    public randomFromTag(tag: string): PowderType {
+    randomFromTag(tag) {
         const types = this.getAllWithTag(tag);
         if (types.length === 0) {
             throw new Error(`No powder types found for tag "${tag}".`);
         }
         const randomIndex = Math.floor(Math.random() * types.length);
-        return types[randomIndex]!;
+        return types[randomIndex];
     }
-
-    public register(id: string, type: PowderType) {
+    register(id, type) {
         if (showHiddenTypes && type.category === null) {
             type.category = "Hidden";
         }
         const newCategory = type.category && !this.categories.has(type.category);
         this.registry.set(id, type);
         this.list.push(id);
-        this.tags.get("all")!.add(id);
-        let list: HTMLUListElement;
+        this.tags.get("all").add(id);
+        let list;
         if (newCategory) {
             const categoryElement = document.createElement("div");
             categoryElement.classList.add("category");
             categoryElement.id = `category-${type.category}`;
             const title = document.createElement("button");
             title.textContent = type.category;
-            title.classList.add("text-button")
+            title.classList.add("text-button");
             title.classList.add("category-title");
             title.onclick = () => {
                 if (this.selectedCategory === type.category) {
                     list.style.display = "none";
                     this.selectedCategory = null;
-                } else {
+                }
+                else {
                     // Hide previously selected category
                     if (this.selectedCategory) {
                         const prevCategoryList = document.getElementById(`category-list-${this.selectedCategory}`);
@@ -389,20 +330,21 @@ class PowderTypes {
             list.style.flexWrap = "wrap";
             console.log(this.pickerElement);
             this.pickerElement.appendChild(list);
-            this.categories.set(type.category!, categoryElement);
+            this.categories.set(type.category, categoryElement);
             this.listElement.appendChild(categoryElement);
-        } else if (!type.category) {
+        }
+        else if (!type.category) {
             return; // Hidden.
-        } else {
-            list = document.getElementById(`category-list-${type.category}`)! as HTMLUListElement;
+        }
+        else {
+            list = document.getElementById(`category-list-${type.category}`);
         }
         const listItem = document.createElement("li");
-        const content = generateTypeButton(id, getGame()!);
+        const content = generateTypeButton(id, getGame());
         listItem.appendChild(content);
         list.appendChild(listItem);
     }
-
-    public getId(type: PowderType): string | undefined {
+    getId(type) {
         for (const [id, registeredType] of this.registry.entries()) {
             if (registeredType === type) {
                 return id;
@@ -410,45 +352,42 @@ class PowderTypes {
         }
         return undefined;
     }
-
-    public get(id: string): PowderType | undefined {
+    get(id) {
         return this.registry.get(id);
     }
-
-    public require(id: string): PowderType {
+    require(id) {
         const type = this.registry.get(id);
         if (!type) {
             throw new Error(`Powder type "${id}" is not registered.`);
         }
         return type;
     }
-
-    public has(id: string): boolean {
+    has(id) {
         return this.registry.has(id);
     }
 }
-
-export function n101random(lessZero: boolean = true): number {
+export function n101random(lessZero = true) {
     const rand = Math.random();
-
     if (lessZero) {
         // High Edges: 45% chance for -1, 45% chance for 1, 10% chance for 0
-        if (rand < 0.45) return -1;
-        if (rand < 0.55) return 0; // 0.1 wide "bucket" (10% chance)
+        if (rand < 0.45)
+            return -1;
+        if (rand < 0.55)
+            return 0; // 0.1 wide "bucket" (10% chance)
         return 1;
-    } else {
+    }
+    else {
         // Equal 1/3 chance for each (33.3% per bucket)
-        if (rand < 0.3333) return -1;
-        if (rand < 0.6666) return 0;
+        if (rand < 0.3333)
+            return -1;
+        if (rand < 0.6666)
+            return 0;
         return 1;
     }
 }
-
-
-
 // Behavior function for powders (like sand or stone)
-export function powderBehavior(game: Powders, particle: Particle, platforming?: number) {
-    const type = powderTypes.require(particle.type!);
+export function powderBehavior(game, particle, platforming) {
+    const type = powderTypes.require(particle.type);
     const yMultiplier = type.reverseGravity ? -1 : 1;
     if (platforming && platforming > 0) {
         let cancel = false;
@@ -459,7 +398,8 @@ export function powderBehavior(game: Powders, particle: Particle, platforming?: 
             if (game.canSwap(particle.type, particle.x + i, particle.y) || !isStable(game, particle.x + i, particle.y)) {
                 cancel = true; // Found a free or unstable space, so not stable in this direction
                 break; // No stable particle to the right, stop checking
-            } else {
+            }
+            else {
                 return; // Found a stable particle to the right, so this is stable and can be used for platforming
             }
         }
@@ -469,7 +409,8 @@ export function powderBehavior(game: Powders, particle: Particle, platforming?: 
                 if (game.canSwap(particle.type, particle.x - i, particle.y) || !isStable(game, particle.x - i, particle.y)) {
                     cancel = true; // Found a free or unstable space, so not stable in this direction
                     break; // No stable particle to the left, stop checking
-                } else {
+                }
+                else {
                     return; // Found a stable particle to the left, so this is stable and can be used for platforming
                 }
             }
@@ -478,112 +419,124 @@ export function powderBehavior(game: Powders, particle: Particle, platforming?: 
     // Try to move down (or up if reverseGravity)
     if (game.canSwap(particle.type, particle.x, particle.y + yMultiplier)) {
         game.swapParticles(particle.x, particle.y, particle.x, particle.y + yMultiplier);
-    } else {
+    }
+    else {
         // Try to move down-left or down-right (or up-left/up-right if reverseGravity)
         const direction = n101random(); // Randomly choose left or right
         if (game.canSwap(particle.type, particle.x + direction, particle.y + yMultiplier)) {
             game.swapParticles(particle.x, particle.y, particle.x + direction, particle.y + yMultiplier);
-        } else if (game.canSwap(particle.type, particle.x - direction, particle.y + yMultiplier)) {
+        }
+        else if (game.canSwap(particle.type, particle.x - direction, particle.y + yMultiplier)) {
             game.swapParticles(particle.x, particle.y, particle.x - direction, particle.y + yMultiplier);
         }
         // Unable to move otherwise, stays in place
     }
 }
-
 // Behavior function for liquids
-export function liquidBehavior(game: Powders, particle: Particle) {
-    const type = powderTypes.require(particle.type!);
+export function liquidBehavior(game, particle) {
+    const type = powderTypes.require(particle.type);
     const yMultiplier = type.reverseGravity ? -1 : 1;
     // Try to move down (or up if reverseGravity)
     if (game.canSwap(particle.type, particle.x, particle.y + yMultiplier)) {
         game.swapParticles(particle.x, particle.y, particle.x, particle.y + yMultiplier);
-    } else {
+    }
+    else {
         // Try to move down-left or down-right (or up-left/up-right if reverseGravity)
         const direction = n101random(); // Randomly choose left or right
         if (game.canSwap(particle.type, particle.x + direction, particle.y + yMultiplier)) {
             game.swapParticles(particle.x, particle.y, particle.x + direction, particle.y + yMultiplier);
-        } else if (game.canSwap(particle.type, particle.x - direction, particle.y + yMultiplier)) {
+        }
+        else if (game.canSwap(particle.type, particle.x - direction, particle.y + yMultiplier)) {
             game.swapParticles(particle.x, particle.y, particle.x - direction, particle.y + yMultiplier);
-        } else if (game.canSwap(particle.type, particle.x + direction, particle.y)) {
+        }
+        else if (game.canSwap(particle.type, particle.x + direction, particle.y)) {
             game.swapParticles(particle.x, particle.y, particle.x + direction, particle.y);
-        } else if (game.canSwap(particle.type, particle.x - direction, particle.y)) {
+        }
+        else if (game.canSwap(particle.type, particle.x - direction, particle.y)) {
             game.swapParticles(particle.x, particle.y, particle.x - direction, particle.y);
         }
         // Unable to move otherwise, stays in place
     }
 }
-
-export function gasBehavior(game: Powders, particle: Particle) {
-    const type = powderTypes.require(particle.type!);
+export function gasBehavior(game, particle) {
+    const type = powderTypes.require(particle.type);
     const gasGravityPref = type.gasGravity ? type.gasWeight || 0.5 : 0;
     const moveWithGravity = Math.random() < gasGravityPref;
-
     if (moveWithGravity) {
         // Do a simple liquid behavior if moving with gravity
         liquidBehavior(game, particle);
         return;
-    } else {
+    }
+    else {
         // Diffuse in a random direction.
         const directionX = n101random();
         const directionY = n101random();
         // BIG check for all 8 directions for diffusion, with a preference for chosen direction
         if (game.canSwap(particle.type, particle.x + directionX, particle.y + directionY)) {
             game.swapParticles(particle.x, particle.y, particle.x + directionX, particle.y + directionY);
-        } else if (game.canSwap(particle.type, particle.x + directionX, particle.y)) {
+        }
+        else if (game.canSwap(particle.type, particle.x + directionX, particle.y)) {
             game.swapParticles(particle.x, particle.y, particle.x + directionX, particle.y);
-        } else if (game.canSwap(particle.type, particle.x, particle.y + directionY)) {
+        }
+        else if (game.canSwap(particle.type, particle.x, particle.y + directionY)) {
             game.swapParticles(particle.x, particle.y, particle.x, particle.y + directionY);
-        } else if (game.canSwap(particle.type, particle.x - directionX, particle.y + directionY)) {
+        }
+        else if (game.canSwap(particle.type, particle.x - directionX, particle.y + directionY)) {
             game.swapParticles(particle.x, particle.y, particle.x - directionX, particle.y + directionY);
-        } else if (game.canSwap(particle.type, particle.x - directionX, particle.y)) {
+        }
+        else if (game.canSwap(particle.type, particle.x - directionX, particle.y)) {
             game.swapParticles(particle.x, particle.y, particle.x - directionX, particle.y);
-        } else if (game.canSwap(particle.type, particle.x, particle.y - directionY)) {
+        }
+        else if (game.canSwap(particle.type, particle.x, particle.y - directionY)) {
             game.swapParticles(particle.x, particle.y, particle.x, particle.y - directionY);
-        } else if (game.canSwap(particle.type, particle.x + directionX, particle.y - directionY)) {
+        }
+        else if (game.canSwap(particle.type, particle.x + directionX, particle.y - directionY)) {
             game.swapParticles(particle.x, particle.y, particle.x + directionX, particle.y - directionY);
-        } else if (game.canSwap(particle.type, particle.x - directionX, particle.y - directionY)) {
+        }
+        else if (game.canSwap(particle.type, particle.x - directionX, particle.y - directionY)) {
             game.swapParticles(particle.x, particle.y, particle.x - directionX, particle.y - directionY);
         }
         // Unable to move otherwise, stays in place
     }
 }
-
 const cloudStartPercent = 0.0; // Start clouds around the top of the screen
 const cloudEndPercent = 0.1; // End clouds around the top 10% of the screen
-
-export function cloudBehavior(game: Powders, particle: Particle) {
+export function cloudBehavior(game, particle) {
     const cloudStartY = game.height * cloudStartPercent; // Start clouds around the top 0% of the screen
     const cloudEndY = game.height * cloudEndPercent; // End clouds around the top 10% of the screen
-
     // Diffuse in a random direction.
     const directionX = n101random();
     const directionY = particle.y > cloudEndY ? -1 : (particle.y < cloudStartY ? 1 : n101random()); // If below cloud area, prefer moving up. If above cloud area, prefer moving down. Otherwise, random.
-
     if (game.canSwap(particle.type, particle.x + directionX, particle.y + directionY)) {
         game.swapParticles(particle.x, particle.y, particle.x + directionX, particle.y + directionY);
-    } else if (game.canSwap(particle.type, particle.x + directionX, particle.y)) {
+    }
+    else if (game.canSwap(particle.type, particle.x + directionX, particle.y)) {
         game.swapParticles(particle.x, particle.y, particle.x + directionX, particle.y);
-    } else if (game.canSwap(particle.type, particle.x, particle.y + directionY)) {
+    }
+    else if (game.canSwap(particle.type, particle.x, particle.y + directionY)) {
         game.swapParticles(particle.x, particle.y, particle.x, particle.y + directionY);
-    } else if (game.canSwap(particle.type, particle.x - directionX, particle.y + directionY)) {
+    }
+    else if (game.canSwap(particle.type, particle.x - directionX, particle.y + directionY)) {
         game.swapParticles(particle.x, particle.y, particle.x - directionX, particle.y + directionY);
-    } else if (game.canSwap(particle.type, particle.x - directionX, particle.y)) {
+    }
+    else if (game.canSwap(particle.type, particle.x - directionX, particle.y)) {
         game.swapParticles(particle.x, particle.y, particle.x - directionX, particle.y);
-    } else if (game.canSwap(particle.type, particle.x, particle.y - directionY)) {
+    }
+    else if (game.canSwap(particle.type, particle.x, particle.y - directionY)) {
         game.swapParticles(particle.x, particle.y, particle.x, particle.y - directionY);
-    } else if (game.canSwap(particle.type, particle.x + directionX, particle.y - directionY)) {
+    }
+    else if (game.canSwap(particle.type, particle.x + directionX, particle.y - directionY)) {
         game.swapParticles(particle.x, particle.y, particle.x + directionX, particle.y - directionY);
-    } else if (game.canSwap(particle.type, particle.x - directionX, particle.y - directionY)) {
+    }
+    else if (game.canSwap(particle.type, particle.x - directionX, particle.y - directionY)) {
         game.swapParticles(particle.x, particle.y, particle.x - directionX, particle.y - directionY);
     }
     // Unable to move otherwise, stays in place
 }
-
-export function solidBehavior(game: Powders, particle: Particle) {
+export function solidBehavior(game, particle) {
     // Dont do anything :)
 }
-
-export function energyBehavior(game: Powders, particle: Particle) {
+export function energyBehavior(game, particle) {
     // If no direction, pick a random one
     if (particle.directionX < 1 && particle.directionY < 1 && particle.directionX > -1 && particle.directionY > -1) {
         particle.directionX = n101random(false);
@@ -594,51 +547,49 @@ export function energyBehavior(game: Powders, particle: Particle) {
     const newY = particle.y + particle.directionY;
     if (game.isFree(newX, newY)) {
         game.swapParticles(particle.x, particle.y, newX, newY);
-    } else {
+    }
+    else {
         // Calculate surface normal by checking which direction is blocked
         let normalX = 0;
         let normalY = 0;
-
         // Determine the normal of the surface hit
         const blockedX = !game.isFree(particle.x + particle.directionX, particle.y);
         const blockedY = !game.isFree(particle.x, particle.y + particle.directionY);
-
         // Set normal based on which axis is blocked
-        if (blockedX) normalX = -Math.sign(particle.directionX);
-        if (blockedY) normalY = -Math.sign(particle.directionY);
-
+        if (blockedX)
+            normalX = -Math.sign(particle.directionX);
+        if (blockedY)
+            normalY = -Math.sign(particle.directionY);
         // If we couldn't determine normal, fallback to simple reversal
         if (normalX === 0 && normalY === 0) {
             normalX = -Math.sign(particle.directionX) || 0;
             normalY = -Math.sign(particle.directionY) || 0;
         }
-
         // Reflect velocity: r = d - 2(d·n)n
         const dotProduct = particle.directionX * normalX + particle.directionY * normalY;
         particle.directionX = particle.directionX - 2 * dotProduct * normalX;
         particle.directionY = particle.directionY - 2 * dotProduct * normalY;
-
         // // Add slight randomness for realistic material variation
         // particle.directionX += (Math.random() - 0.5) * 0.2;
         // particle.directionY += (Math.random() - 0.5) * 0.2;
-
         // Ensure we have a valid direction after bounce to prevent freezing
         if (Math.abs(particle.directionX) < 0.1 && Math.abs(particle.directionY) < 0.1) {
             particle.directionX = n101random(false);
             particle.directionY = n101random(false);
         }
-
         // Try to move in reflected direction, with fallback to adjacent directions
         let moveFound = false;
         const checkX = particle.x + particle.directionX;
         const checkY = particle.y + particle.directionY;
         if (game.isFree(checkX, checkY)) {
             moveFound = true;
-        } else {
+        }
+        else {
             // Try all 8 directions to find an escape route
             for (let dx = -1; dx <= 1; dx++) {
                 for (let dy = -1; dy <= 1; dy++) {
-                    if (dx === 0 && dy === 0) continue;
+                    if (dx === 0 && dy === 0)
+                        continue;
                     if (game.isFree(particle.x + dx, particle.y + dy)) {
                         particle.directionX = dx;
                         particle.directionY = dy;
@@ -646,10 +597,10 @@ export function energyBehavior(game: Powders, particle: Particle) {
                         break;
                     }
                 }
-                if (moveFound) break;
+                if (moveFound)
+                    break;
             }
         }
-
         // If still stuck, pick a random direction to escape
         if (!moveFound) {
             particle.directionX = n101random(false);
@@ -657,8 +608,7 @@ export function energyBehavior(game: Powders, particle: Particle) {
         }
     }
 }
-
-export function staticEnergyBehavior(game: Powders, particle: Particle) {
+export function staticEnergyBehavior(game, particle) {
     // Static energy rarely moves in a random direction, but can be moved by other particles like normal energy
     if (Math.random() < 0.05) { // 5% chance each tick to move in a random direction
         const directionX = n101random(false);
@@ -670,8 +620,7 @@ export function staticEnergyBehavior(game: Powders, particle: Particle) {
         }
     }
 }
-
-export function colorCurve(points: { offset: number; color: string }[], position: number): string {
+export function colorCurve(points, position) {
     position = 1 - Math.max(0, Math.min(1, position)); // Clamp position to [0, 1] and invert.
     // Sort points by offset
     points.sort((a, b) => a.offset - b.offset);
@@ -679,93 +628,86 @@ export function colorCurve(points: { offset: number; color: string }[], position
     let startPoint = points[0];
     let endPoint = points[points.length - 1];
     for (let i = 0; i < points.length - 1; i++) {
-        if (position >= points[i]!.offset && position <= points[i + 1]!.offset) {
-            startPoint = points[i]!;
-            endPoint = points[i + 1]!;
+        if (position >= points[i].offset && position <= points[i + 1].offset) {
+            startPoint = points[i];
+            endPoint = points[i + 1];
             break;
         }
     }
     // Calculate the ratio between the two points
-    const range = endPoint!.offset - startPoint!.offset;
-    const ratio = range === 0 ? 0 : (position - startPoint!.offset) / range;
+    const range = endPoint.offset - startPoint.offset;
+    const ratio = range === 0 ? 0 : (position - startPoint.offset) / range;
     // Interpolate between the two colors
-    const r1 = parseInt(startPoint!.color.slice(1, 3), 16);
-    const g1 = parseInt(startPoint!.color.slice(3, 5), 16);
-    const b1 = parseInt(startPoint!.color.slice(5, 7), 16);
-    const r2 = parseInt(endPoint!.color.slice(1, 3), 16);
-    const g2 = parseInt(endPoint!.color.slice(3, 5), 16);
-    const b2 = parseInt(endPoint!.color.slice(5, 7), 16);
+    const r1 = parseInt(startPoint.color.slice(1, 3), 16);
+    const g1 = parseInt(startPoint.color.slice(3, 5), 16);
+    const b1 = parseInt(startPoint.color.slice(5, 7), 16);
+    const r2 = parseInt(endPoint.color.slice(1, 3), 16);
+    const g2 = parseInt(endPoint.color.slice(3, 5), 16);
+    const b2 = parseInt(endPoint.color.slice(5, 7), 16);
     const r = Math.round(r1 + (r2 - r1) * ratio);
     const g = Math.round(g1 + (g2 - g1) * ratio);
     const b = Math.round(b1 + (b2 - b1) * ratio);
     return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
-
-const hasTouchSupport = (): boolean => {
+const hasTouchSupport = () => {
     return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 };
-
 export class Powders {
-    canvas: HTMLCanvasElement;
-    ctx: CanvasRenderingContext2D;
-    grid: Particle[][];
-    mouseX: number = 0;
-    mouseY: number = 0;
-    lastMouseX: number = 0;
-    lastMouseY: number = 0;
-    mouseLeftDown: boolean = false;
-    mouseRightDown: boolean = false;
-    selectedType: string | null = null;
-    selectedTool: string | null = null;
-    tickRate: number = 20; // 20 ticks per second
-    tmpGrid: Particle[][] | null = null; // Temporary grid for updates
-    private _paused: boolean = false;
-    width: number = 75;
-    height: number = 56;
-    brushSize: number = 0; // 1 pixel
-    intensifyBrush: boolean = false; // Intensification makes tools stronger.
-    keysDown: Set<string> = new Set();
-    debugRenderShapesInput: HTMLInputElement;
-    doDebugRender: boolean = false;
-    isMobile: boolean;
-    disableAi: boolean = false; // Performance option to disable AI
-    noSpecialGraphics: boolean = false; // Performance option to disable special graphics (like glow)
-    _noInput: boolean = false; // Disables inputs temporarily
-    debugRenderShapes: { x: number; y: number; width: number; height: number; color: string; forTick: boolean }[] = [];
-
-    set noInput(value: boolean) {
+    canvas;
+    ctx;
+    grid;
+    mouseX = 0;
+    mouseY = 0;
+    lastMouseX = 0;
+    lastMouseY = 0;
+    mouseLeftDown = false;
+    mouseRightDown = false;
+    selectedType = null;
+    selectedTool = null;
+    tickRate = 20; // 20 ticks per second
+    tmpGrid = null; // Temporary grid for updates
+    _paused = false;
+    width = 75;
+    height = 56;
+    brushSize = 0; // 1 pixel
+    intensifyBrush = false; // Intensification makes tools stronger.
+    keysDown = new Set();
+    debugRenderShapesInput;
+    doDebugRender = false;
+    isMobile;
+    disableAi = false; // Performance option to disable AI
+    noSpecialGraphics = false; // Performance option to disable special graphics (like glow)
+    _noInput = false; // Disables inputs temporarily
+    debugRenderShapes = [];
+    set noInput(value) {
         this._noInput = value;
         if (!value) {
             this.lastMouseX = this.mouseX;
             this.lastMouseY = this.mouseY;
         }
     }
-
-    get noInput(): boolean {
+    get noInput() {
         return this._noInput;
     }
-
-    set paused(value: boolean) {
+    set paused(value) {
         this._paused = value;
-        const pauseToggle = document.getElementById("mobile-p") as HTMLInputElement;
+        const pauseToggle = document.getElementById("mobile-p");
         if (pauseToggle) {
             pauseToggle.checked = value;
         }
     }
-
-    get paused(): boolean {
+    get paused() {
         return this._paused;
     }
-
     constructor() {
-        this.canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
+        this.canvas = document.getElementById("game-canvas");
         // Quick phone UI change on the canvas (For larger canvas)
         console.log(`Window size: ${window.innerWidth}x${window.innerHeight}`);
         if (window.innerWidth < window.innerHeight && window.innerHeight >= 1000) { // More space for controls below, use larger canvas
             this.canvas.classList.add("mobile");
         }
         if (window.innerHeight < 720) { // Small screen, switch header to mobile version (hidden)
-            const header = document.querySelector("header")!;
+            const header = document.querySelector("header");
             header.classList.add("mobile");
         }
         const context = this.canvas.getContext("2d");
@@ -774,39 +716,39 @@ export class Powders {
         }
         this.ctx = context;
         this.grid = [];
-        this.debugRenderShapesInput = document.getElementById("debug-render-shapes") as HTMLInputElement;
+        this.debugRenderShapesInput = document.getElementById("debug-render-shapes");
         this.debugRenderShapesInput.onchange = () => {
             this.doDebugRender = this.debugRenderShapesInput.checked;
         };
         this.isMobile = hasTouchSupport();
         if (this.isMobile) {
-            const mobileControls = document.getElementById("mobile-controls")!;
+            const mobileControls = document.getElementById("mobile-controls");
             mobileControls.style.display = "block";
-            const clearTerrainBtn = document.getElementById("mobile-c-t")!;
+            const clearTerrainBtn = document.getElementById("mobile-c-t");
             clearTerrainBtn.onclick = () => {
                 this.reset(true);
             };
-            const clearNoTerrainBtn = document.getElementById("mobile-c-nt")!;
+            const clearNoTerrainBtn = document.getElementById("mobile-c-nt");
             clearNoTerrainBtn.onclick = () => {
                 this.reset(false);
             };
-            const brushSizeSlider = document.getElementById("mobile-bs") as HTMLInputElement;
+            const brushSizeSlider = document.getElementById("mobile-bs");
             brushSizeSlider.oninput = () => {
                 this.brushSize = parseInt(brushSizeSlider.value, 10);
             };
-            const debugModeToggle = document.getElementById("mobile-dmt") as HTMLInputElement;
+            const debugModeToggle = document.getElementById("mobile-dmt");
             debugModeToggle.onclick = () => {
                 this.toggleDebug();
             };
-            const intensifyToggle = document.getElementById("mobile-it") as HTMLInputElement;
+            const intensifyToggle = document.getElementById("mobile-it");
             intensifyToggle.onchange = () => {
                 this.intensifyBrush = intensifyToggle.checked;
             };
-            const pauseToggle = document.getElementById("mobile-p") as HTMLInputElement;
+            const pauseToggle = document.getElementById("mobile-p");
             pauseToggle.onchange = () => {
                 this._paused = pauseToggle.checked; // Fixes some recursion issues.
             };
-            const settingsToggle = document.getElementById("mobile-s") as HTMLButtonElement;
+            const settingsToggle = document.getElementById("mobile-s");
             settingsToggle.onclick = () => {
                 this.toggleSettings();
             };
@@ -816,85 +758,81 @@ export class Powders {
         this.resize(this.canvas.width, this.canvas.height, false);
         console.log("Powders game initialized!");
     }
-
-    public initHtml() {
+    initHtml() {
         const uiCloseBtns = document.querySelectorAll("button[data-close]");
         uiCloseBtns.forEach((btn) => {
-            const button = btn as HTMLButtonElement;
-            const targetId = button.getAttribute("data-close")!;
+            const button = btn;
+            const targetId = button.getAttribute("data-close");
             button.onclick = () => {
                 this.closeUi(targetId);
             };
         });
     }
-
-    public closeUi(id: string) {
+    closeUi(id) {
         const element = document.getElementById(id);
         if (element) {
             element.style.display = "none";
         }
     }
-
-    public openUi(id: string) {
+    openUi(id) {
         const element = document.getElementById(id);
         if (element) {
             element.style.display = "block";
         }
     }
-
-    public fixParticleErrors(particle: Particle) {
+    fixParticleErrors(particle) {
         // Fixes any "errors" with the particle
         // Ex:
         // - Direction not being normalized from -1 to 1
-        if (particle.directionX < -1) particle.directionX = -1;
-        if (particle.directionX > 1) particle.directionX = 1;
-        if (particle.directionY < -1) particle.directionY = -1;
-        if (particle.directionY > 1) particle.directionY = 1;
-        particle.directionX = Math.round(particle.directionX)
-        particle.directionY = Math.round(particle.directionY)
+        if (particle.directionX < -1)
+            particle.directionX = -1;
+        if (particle.directionX > 1)
+            particle.directionX = 1;
+        if (particle.directionY < -1)
+            particle.directionY = -1;
+        if (particle.directionY > 1)
+            particle.directionY = 1;
+        particle.directionX = Math.round(particle.directionX);
+        particle.directionY = Math.round(particle.directionY);
     }
-
-    public toggleUi(id: string) {
+    toggleUi(id) {
         const element = document.getElementById(id);
         if (element) {
             if (element.style.display === "block") {
                 element.style.display = "none";
-            } else {
+            }
+            else {
                 element.style.display = "block";
             }
         }
     }
-
-    public mouseInBounds(): boolean {
+    mouseInBounds() {
         return this.mouseX >= 0 && this.mouseX < this.canvas.width && this.mouseY >= 0 && this.mouseY < this.canvas.height;
     }
-
-    public getSettingsDict(): { [key: string]: any } {
+    getSettingsDict() {
         return {
             disableAi: this.disableAi,
             noSpecialGraphics: this.noSpecialGraphics,
         };
     }
-
-    public getLocalStorageSettings(): { [key: string]: any } | undefined {
+    getLocalStorageSettings() {
         const settingsStr = localStorage.getItem("powdersSettings");
         if (settingsStr) {
             try {
                 return JSON.parse(settingsStr);
-            } catch (e) {
+            }
+            catch (e) {
                 console.error("Failed to parse settings from localStorage:", e);
                 return undefined;
             }
         }
         return undefined;
     }
-
-    public saveSettings() {
+    saveSettings() {
         const settings = this.getSettingsDict();
         localStorage.setItem("powdersSettings", JSON.stringify(settings));
     }
-
-    public initSettings() {
+    initSettings() {
         const settings = this.getLocalStorageSettings();
         if (settings) {
             if (typeof settings.disableAi === "boolean") {
@@ -905,30 +843,28 @@ export class Powders {
             }
         }
         // Initialize settings stuff
-        const disableAiCheckbox = document.getElementById("settings-disable-ai") as HTMLInputElement;
+        const disableAiCheckbox = document.getElementById("settings-disable-ai");
         disableAiCheckbox.checked = this.disableAi;
         disableAiCheckbox.onchange = () => {
             this.disableAi = disableAiCheckbox.checked;
             this.saveSettings();
         };
-        const noSpecialGraphicsCheckbox = document.getElementById("settings-no-special-graphics") as HTMLInputElement;
+        const noSpecialGraphicsCheckbox = document.getElementById("settings-no-special-graphics");
         noSpecialGraphicsCheckbox.checked = this.noSpecialGraphics;
         noSpecialGraphicsCheckbox.onchange = () => {
             this.noSpecialGraphics = noSpecialGraphicsCheckbox.checked;
             this.saveSettings();
         };
-        const settingsCloseButton = document.getElementById("settings-close-button")!;
+        const settingsCloseButton = document.getElementById("settings-close-button");
         settingsCloseButton.onclick = () => {
             this.toggleSettings();
         };
     }
-
-    public renderDebugSquare(x: number, y: number, width: number, height: number, color: string, forTick: boolean = true) {
+    renderDebugSquare(x, y, width, height, color, forTick = true) {
         this.debugRenderShapes.push({ x, y, width, height, color, forTick });
     }
-
-    public processTypeId(typeId: string | null, original: string | null = null, placeholderIndex: Map<string, string | null> = new Map(), single: boolean = false): (string | null)[] | (string | null) {
-        const types: (string | null)[] = [];
+    processTypeId(typeId, original = null, placeholderIndex = new Map(), single = false) {
+        const types = [];
         if (typeId === null) {
             return [null];
         }
@@ -945,27 +881,29 @@ export class Powders {
                     types.push(id);
                 }
             }
-        } else if (typeId.startsWith("!")) {
+        }
+        else if (typeId.startsWith("!")) {
             const placeholder = typeId.substring(1);
             const placeholderValue = placeholderIndex.get(placeholder);
             if (placeholderValue === undefined) {
                 throw new Error(`Placeholder "${placeholder}" not found in index.`);
             }
             types.push(placeholderValue);
-        } else if (typeId === "$none") { // dollar sign for special values that cant be defined with an ID
+        }
+        else if (typeId === "$none") { // dollar sign for special values that cant be defined with an ID
             types.push(null);
-        } else {
+        }
+        else {
             types.push(typeId);
         }
-        return single ? types[0]! : types;
+        return single ? types[0] : types;
     }
-
-    public isFree(x: number, y: number): boolean {
+    isFree(x, y) {
         // Make sure nothing is undefined
         if (this.grid[y] === undefined) {
             return false; // If the row doesn't exist, it's not free (Out of bounds)
         }
-        if (this.grid[y]![x] === undefined) {
+        if (this.grid[y][x] === undefined) {
             return false; // If the cell doesn't exist, it's not free (Out of bounds)
         }
         // Individual out-of-bounds checks
@@ -975,22 +913,19 @@ export class Powders {
         if (y >= this.grid.length) {
             return false; // Y coordinate is out of bounds
         }
-        if (x >= this.grid[y]!.length) {
+        if (x >= this.grid[y].length) {
             return false; // X coordinate is out of bounds
         }
-        if (y < 0 || y >= this.grid.length || x < 0 || x >= this.grid[y]!.length) {
+        if (y < 0 || y >= this.grid.length || x < 0 || x >= this.grid[y].length) {
             return false; // Out of bounds is not free
         }
-        return (
-            y >= 0 &&
+        return (y >= 0 &&
             y < this.grid.length &&
             x >= 0 &&
-            x < this.grid[y]!.length &&
-            this.grid[y]![x]!.type === null
-        );
+            x < this.grid[y].length &&
+            this.grid[y][x].type === null);
     }
-
-    public canSwap(type: string | null, x: number, y: number): boolean {
+    canSwap(type, x, y) {
         if (this.isFree(x, y)) {
             return true;
         }
@@ -998,34 +933,31 @@ export class Powders {
         if (!otherParticle) {
             return false;
         }
-        const otherType = powderTypes.require(otherParticle.type!);
+        const otherType = powderTypes.require(otherParticle.type);
         const thisType = type ? powderTypes.require(type) : null;
         return (thisType?.weight ?? 1) > otherType.weight;
     }
-
-    public spawnParticle(x: number, y: number, type: string | null, replace: boolean = false) {
-        if (x < 0 || y < 0 || y >= this.grid.length || x >= this.grid[y]!.length) {
+    spawnParticle(x, y, type, replace = false) {
+        if (x < 0 || y < 0 || y >= this.grid.length || x >= this.grid[y].length) {
             return; // Out of bounds
         }
         if (this.isFree(x, y) || replace) {
-            const particle: Particle = new Particle(x, y, type);
-            (this.tmpGrid || this.grid)[y]![x] = particle;
+            const particle = new Particle(x, y, type);
+            (this.tmpGrid || this.grid)[y][x] = particle;
             const typeData = type ? powderTypes.require(type) : null;
             if (typeData?.onSpawn) {
                 typeData.onSpawn(this, particle);
             }
         }
     }
-
-    public removeParticle(x: number, y: number) {
+    removeParticle(x, y) {
         this.spawnParticle(x, y, null, true);
     }
-
-    public toggleSettings() {
-        const settingsContainer = document.getElementById("settings-container")!;
+    toggleSettings() {
+        const settingsContainer = document.getElementById("settings-container");
         if (settingsContainer.style.display === "none") {
             settingsContainer.style.display = "block";
-            const noSpecialGraphicsCheckbox = document.getElementById("settings-no-special-graphics") as HTMLInputElement;
+            const noSpecialGraphicsCheckbox = document.getElementById("settings-no-special-graphics");
             noSpecialGraphicsCheckbox.checked = this.noSpecialGraphics;
             noSpecialGraphicsCheckbox.onchange = () => {
                 this.noSpecialGraphics = noSpecialGraphicsCheckbox.checked;
@@ -1033,7 +965,8 @@ export class Powders {
             };
             this.paused = true; // Pause game when entering settings
             this.noInput = true; // Stop game from recieving input
-        } else {
+        }
+        else {
             settingsContainer.style.display = "none";
             this.saveSettings(); // Save settings when exiting
             setTimeout(() => {
@@ -1041,13 +974,14 @@ export class Powders {
             }, 100);
         }
     }
-
-    public listenInputs() {
-        const mouseDown = (e: MouseEvent) => {
-            if (this.noInput) return;
+    listenInputs() {
+        const mouseDown = (e) => {
+            if (this.noInput)
+                return;
             if (e.button === 0) {
                 this.mouseLeftDown = true;
-            } else if (e.button === 2) {
+            }
+            else if (e.button === 2) {
                 this.mouseRightDown = true;
             }
             const coords = screenToCanvas(this.canvas, e.clientX, e.clientY);
@@ -1057,65 +991,65 @@ export class Powders {
                 mouseUp(e); // If mouse is out of bounds, cancel the click to prevent issues with dragging outside of the canvas
                 return;
             }
-        }
+        };
         document.addEventListener("mousedown", mouseDown);
         document.addEventListener("contextmenu", (e) => {
             e.preventDefault();
         });
-        function screenToCanvas(canvas: HTMLCanvasElement, screenX: number, screenY: number): { x: number; y: number } {
+        function screenToCanvas(canvas, screenX, screenY) {
             const rect = canvas.getBoundingClientRect();
             const rectWidth = rect.width;
             const rectHeight = rect.height;
             const canvasWidth = canvas.width;
             const canvasHeight = canvas.height;
-
             // Calculate the aspect ratios
             const rectAspect = rectWidth / rectHeight;
             const canvasAspect = canvasWidth / canvasHeight;
-
             let displayWidth = rectWidth;
             let displayHeight = rectHeight;
             let offsetX = 0;
             let offsetY = 0;
-
             // Adjust for aspect ratio mismatch
             if (rectAspect > canvasAspect) {
                 // Canvas display is wider than canvas data
                 displayWidth = rectHeight * canvasAspect;
                 offsetX = (rectWidth - displayWidth) / 2;
-            } else if (rectAspect < canvasAspect) {
+            }
+            else if (rectAspect < canvasAspect) {
                 // Canvas display is taller than canvas data
                 displayHeight = rectWidth / canvasAspect;
                 offsetY = (rectHeight - displayHeight) / 2;
             }
-
             // Calculate the scale factors for each dimension
             const scaleX = canvasWidth / displayWidth;
             const scaleY = canvasHeight / displayHeight;
-
             // Convert screen coordinates to canvas image data coordinates
             const x = Math.floor((screenX - rect.left - offsetX) * scaleX);
             const y = Math.floor((screenY - rect.top - offsetY) * scaleY);
             return { x, y };
         }
-        const mouseUp = (e: MouseEvent) => {
-            if (this.noInput) return;
+        const mouseUp = (e) => {
+            if (this.noInput)
+                return;
             if (e.button === 0) {
                 this.mouseLeftDown = false;
-            } else if (e.button === 2) {
+            }
+            else if (e.button === 2) {
                 this.mouseRightDown = false;
             }
-        }
+        };
         document.addEventListener("mouseup", mouseUp);
-        const mouseMove = (e: MouseEvent) => {
-            if (this.noInput) return;
+        const mouseMove = (e) => {
+            if (this.noInput)
+                return;
             const coords = screenToCanvas(this.canvas, e.clientX, e.clientY);
             this.mouseX = coords.x;
             this.mouseY = coords.y;
-        }
+        };
         document.addEventListener("mousemove", mouseMove);
-        const keyDown = (e: KeyboardEvent) => {
-            if (this.noInput) return;
+        const keyDown = (e) => {
+            if (this.noInput)
+                return;
             this.keysDown.add(e.key);
             switch (e.key) {
                 case "d":
@@ -1150,7 +1084,7 @@ export class Powders {
             }
         };
         document.addEventListener("keydown", keyDown);
-        const keyUp = (e: KeyboardEvent) => {
+        const keyUp = (e) => {
             this.keysDown.delete(e.key);
             switch (e.key) {
                 case "Shift":
@@ -1161,9 +1095,10 @@ export class Powders {
         document.addEventListener("keyup", keyUp);
         // Mobile inputs
         document.addEventListener("touchstart", (e) => {
-            if (this.noInput) return;
+            if (this.noInput)
+                return;
             this.canvas.focus();
-            const touch = e.touches[0]!;
+            const touch = e.touches[0];
             const pos = screenToCanvas(this.canvas, touch.clientX, touch.clientY);
             this.mouseX = pos.x;
             this.mouseY = pos.y;
@@ -1175,12 +1110,14 @@ export class Powders {
             this.mouseLeftDown = true;
         });
         document.addEventListener("touchend", (e) => {
-            if (this.noInput) return;
+            if (this.noInput)
+                return;
             this.mouseLeftDown = false;
         });
         document.addEventListener("touchmove", (e) => {
-            if (this.noInput) return;
-            const touch = e.touches[0]!;
+            if (this.noInput)
+                return;
+            const touch = e.touches[0];
             const pos = screenToCanvas(this.canvas, touch.clientX, touch.clientY);
             this.mouseX = pos.x;
             this.mouseY = pos.y;
@@ -1191,16 +1128,14 @@ export class Powders {
             }
         });
     }
-
-    public drawParticleRect(x: number, y: number, width: number, height: number, type: string | null, replace: boolean = false) {
+    drawParticleRect(x, y, width, height, type, replace = false) {
         for (let dy = 0; dy < height; dy++) {
             for (let dx = 0; dx < width; dx++) {
                 this.spawnParticle(x + dx, y + dy, type, replace);
             }
         }
     }
-
-    public drawParticleLine(x1: number, y1: number, x2: number, y2: number, type: string | null, replace: boolean = false, width: number = 1) {
+    drawParticleLine(x1, y1, x2, y2, type, replace = false, width = 1) {
         width = (width * 2) + 1; // Fix any issues with size
         const dx = x2 - x1;
         const dy = y2 - y1;
@@ -1231,12 +1166,12 @@ export class Powders {
             }
         }
     }
-
-    public getAdjacentParticles(x: number, y: number): Particle[] {
-        const adjacent: Particle[] = [];
+    getAdjacentParticles(x, y) {
+        const adjacent = [];
         for (let dy = -1; dy <= 1; dy++) {
             for (let dx = -1; dx <= 1; dx++) {
-                if (dx === 0 && dy === 0) continue; // Skip the center particle
+                if (dx === 0 && dy === 0)
+                    continue; // Skip the center particle
                 const adjParticle = this.getParticle(x + dx, y + dy);
                 if (adjParticle) {
                     adjacent.push(adjParticle);
@@ -1245,24 +1180,21 @@ export class Powders {
         }
         return adjacent;
     }
-
-    public getAdjacentOfType(x: number, y: number, type: string): Particle | null {
+    getAdjacentOfType(x, y, type) {
         const adjacent = this.getAdjacentParticles(x, y).filter(p => p.type === type);
         return adjacent[0] ? adjacent[0] : null;
     }
-
-    public swapParticles(x1: number, y1: number, x2: number, y2: number) {
-        const temp = (this.tmpGrid || this.grid)[y1]![x1]!;
-        (this.tmpGrid || this.grid)[y1]![x1] = (this.tmpGrid || this.grid)[y2]![x2]!;
-        (this.tmpGrid || this.grid)[y2]![x2] = temp;
+    swapParticles(x1, y1, x2, y2) {
+        const temp = (this.tmpGrid || this.grid)[y1][x1];
+        (this.tmpGrid || this.grid)[y1][x1] = (this.tmpGrid || this.grid)[y2][x2];
+        (this.tmpGrid || this.grid)[y2][x2] = temp;
         // Make sure to update the particle's internal coordinates after swapping
-        (this.tmpGrid || this.grid)[y1]![x1]!.x = x1;
-        (this.tmpGrid || this.grid)[y1]![x1]!.y = y1;
-        (this.tmpGrid || this.grid)[y2]![x2]!.x = x2;
-        (this.tmpGrid || this.grid)[y2]![x2]!.y = y2;
+        (this.tmpGrid || this.grid)[y1][x1].x = x1;
+        (this.tmpGrid || this.grid)[y1][x1].y = y1;
+        (this.tmpGrid || this.grid)[y2][x2].x = x2;
+        (this.tmpGrid || this.grid)[y2][x2].y = y2;
     }
-
-    public raycast(x: number, y: number, angle: number, maxDist?: number): { x: number; y: number; particle: Particle | null } {
+    raycast(x, y, angle, maxDist) {
         if (maxDist === undefined) {
             maxDist = Math.ceil(Math.sqrt((this.width * this.width) + (this.height * this.height)));
         }
@@ -1276,50 +1208,53 @@ export class Powders {
         }
         return { x: endX, y: endY, particle: null };
     }
-
-    public update() {
+    update() {
         this.debugRenderShapes = this.debugRenderShapes.filter(shape => !shape.forTick);
         this.tmpGrid = [];
         for (let y = 0; y < this.grid.length; y++) {
-            const newRow: Particle[] = [];
-            for (let x = 0; x < this.grid[y]!.length; x++) {
-                const particle = this.grid[y]![x];
+            const newRow = [];
+            for (let x = 0; x < this.grid[y].length; x++) {
+                const particle = this.grid[y][x];
                 if (particle && particle.type !== null) {
                     newRow.push(particle);
-                } else {
+                }
+                else {
                     newRow.push(new Particle(x, y, null));
                 }
             }
             this.tmpGrid.push(newRow);
         }
         for (let y = this.grid.length - 1; y >= 0; y--) {
-            for (let x = 0; x < this.grid[y]!.length; x++) {
-                const particle = this.grid[y]![x];
+            for (let x = 0; x < this.grid[y].length; x++) {
+                const particle = this.grid[y][x];
                 if (particle && particle.type !== null) {
                     const type = powderTypes.require(particle.type);
                     type.behavior(this, particle);
                     for (const reaction of type.reactions || []) {
                         if (Math.random() < reaction.chance) {
-                            const allReactionTypes = this.processTypeId(reaction.with) as (string | null)[];
-                            let otherParticle: Particle | null = null;
+                            const allReactionTypes = this.processTypeId(reaction.with);
+                            let otherParticle = null;
                             for (const type of allReactionTypes) {
                                 if (type === null) {
                                     continue; // Ignore
                                 }
                                 otherParticle = this.getAdjacentOfType(particle.x, particle.y, type);
-                                if (otherParticle) break;
+                                if (otherParticle)
+                                    break;
                             }
                             if (otherParticle) {
                                 if (reaction.behavior) {
                                     reaction.behavior(this, particle, otherParticle);
-                                } else {
-                                    const newResult = this.processTypeId(reaction.result, particle.type, new Map(), true) as string | null;
+                                }
+                                else {
+                                    const newResult = this.processTypeId(reaction.result, particle.type, new Map(), true);
                                     // Default reaction behavior: spawn result at the location of the first particle and destroy the second
                                     this.spawnParticle(particle.x, particle.y, newResult, true);
                                     if (reaction.secondResult) {
-                                        const secondResult = this.processTypeId(reaction.secondResult, otherParticle.type, new Map(), true) as string | null;
+                                        const secondResult = this.processTypeId(reaction.secondResult, otherParticle.type, new Map(), true);
                                         this.spawnParticle(otherParticle.x, otherParticle.y, secondResult, true);
-                                    } else {
+                                    }
+                                    else {
                                         this.spawnParticle(otherParticle.x, otherParticle.y, null, true);
                                     }
                                 }
@@ -1330,7 +1265,7 @@ export class Powders {
                     for (const adj of adjacentParticles) {
                         if (adj.type !== null) {
                             const tempDiff = particle.temp - adj.temp;
-                            const transferAmount = tempDiff * (powderTypes.require(particle.type!).tempTransferRate || airTempTransferRate);
+                            const transferAmount = tempDiff * (powderTypes.require(particle.type).tempTransferRate || airTempTransferRate);
                             particle.temp -= transferAmount;
                             adj.temp += transferAmount;
                         }
@@ -1342,54 +1277,71 @@ export class Powders {
                         particle.temp -= transferAmount;
                     }
                     if (type.meltingPoint !== null && type.meltingPoint !== undefined && particle.temp >= type.meltingPoint) {
-                        this.spawnParticle(particle.x, particle.y, type.meltingResult!, true);
+                        this.spawnParticle(particle.x, particle.y, type.meltingResult, true);
                         if (type.meltingResultSecond) {
                             // Spawn second result in a random adjacent free space, or on top of the first result if no free space
                             const randomDirectionX = n101random(false);
                             const randomDirectionY = n101random(false);
                             if (this.isFree(particle.x + randomDirectionX, particle.y + randomDirectionY)) {
                                 this.spawnParticle(particle.x + randomDirectionX, particle.y + randomDirectionY, type.meltingResultSecond, true);
-                            } else if (this.isFree(particle.x - randomDirectionX, particle.y - randomDirectionY)) {
+                            }
+                            else if (this.isFree(particle.x - randomDirectionX, particle.y - randomDirectionY)) {
                                 this.spawnParticle(particle.x - randomDirectionX, particle.y - randomDirectionY, type.meltingResultSecond, true);
-                            } else if (this.isFree(particle.x + randomDirectionX, particle.y - randomDirectionY)) {
+                            }
+                            else if (this.isFree(particle.x + randomDirectionX, particle.y - randomDirectionY)) {
                                 this.spawnParticle(particle.x + randomDirectionX, particle.y - randomDirectionY, type.meltingResultSecond, true);
-                            } else if (this.isFree(particle.x - randomDirectionX, particle.y + randomDirectionY)) {
+                            }
+                            else if (this.isFree(particle.x - randomDirectionX, particle.y + randomDirectionY)) {
                                 this.spawnParticle(particle.x - randomDirectionX, particle.y + randomDirectionY, type.meltingResultSecond, true);
-                            } else if (this.isFree(particle.x + randomDirectionX, particle.y)) {
+                            }
+                            else if (this.isFree(particle.x + randomDirectionX, particle.y)) {
                                 this.spawnParticle(particle.x + randomDirectionX, particle.y, type.meltingResultSecond, true);
-                            } else if (this.isFree(particle.x - randomDirectionX, particle.y)) {
+                            }
+                            else if (this.isFree(particle.x - randomDirectionX, particle.y)) {
                                 this.spawnParticle(particle.x - randomDirectionX, particle.y, type.meltingResultSecond, true);
-                            } else if (this.isFree(particle.x, particle.y + randomDirectionY)) {
+                            }
+                            else if (this.isFree(particle.x, particle.y + randomDirectionY)) {
                                 this.spawnParticle(particle.x, particle.y + randomDirectionY, type.meltingResultSecond, true);
-                            } else if (this.isFree(particle.x, particle.y - randomDirectionY)) {
+                            }
+                            else if (this.isFree(particle.x, particle.y - randomDirectionY)) {
                                 this.spawnParticle(particle.x, particle.y - randomDirectionY, type.meltingResultSecond, true);
-                            } else {
+                            }
+                            else {
                                 this.spawnParticle(particle.x, particle.y, type.meltingResultSecond, true);
                             }
                         }
-                    } else if (type.freezingPoint !== null && type.freezingPoint !== undefined && particle.temp <= type.freezingPoint) {
-                        this.spawnParticle(particle.x, particle.y, type.freezingResult!, true);
+                    }
+                    else if (type.freezingPoint !== null && type.freezingPoint !== undefined && particle.temp <= type.freezingPoint) {
+                        this.spawnParticle(particle.x, particle.y, type.freezingResult, true);
                         if (type.freezingResultSecond) {
                             // Spawn second result in a random adjacent free space, or on top of the first result if no free space
                             const randomDirectionX = n101random(false);
                             const randomDirectionY = n101random(false);
                             if (this.isFree(particle.x + randomDirectionX, particle.y + randomDirectionY)) {
                                 this.spawnParticle(particle.x + randomDirectionX, particle.y + randomDirectionY, type.freezingResultSecond, true);
-                            } else if (this.isFree(particle.x - randomDirectionX, particle.y - randomDirectionY)) {
+                            }
+                            else if (this.isFree(particle.x - randomDirectionX, particle.y - randomDirectionY)) {
                                 this.spawnParticle(particle.x - randomDirectionX, particle.y - randomDirectionY, type.freezingResultSecond, true);
-                            } else if (this.isFree(particle.x + randomDirectionX, particle.y - randomDirectionY)) {
+                            }
+                            else if (this.isFree(particle.x + randomDirectionX, particle.y - randomDirectionY)) {
                                 this.spawnParticle(particle.x + randomDirectionX, particle.y - randomDirectionY, type.freezingResultSecond, true);
-                            } else if (this.isFree(particle.x - randomDirectionX, particle.y + randomDirectionY)) {
+                            }
+                            else if (this.isFree(particle.x - randomDirectionX, particle.y + randomDirectionY)) {
                                 this.spawnParticle(particle.x - randomDirectionX, particle.y + randomDirectionY, type.freezingResultSecond, true);
-                            } else if (this.isFree(particle.x + randomDirectionX, particle.y)) {
+                            }
+                            else if (this.isFree(particle.x + randomDirectionX, particle.y)) {
                                 this.spawnParticle(particle.x + randomDirectionX, particle.y, type.freezingResultSecond, true);
-                            } else if (this.isFree(particle.x - randomDirectionX, particle.y)) {
+                            }
+                            else if (this.isFree(particle.x - randomDirectionX, particle.y)) {
                                 this.spawnParticle(particle.x - randomDirectionX, particle.y, type.freezingResultSecond, true);
-                            } else if (this.isFree(particle.x, particle.y + randomDirectionY)) {
+                            }
+                            else if (this.isFree(particle.x, particle.y + randomDirectionY)) {
                                 this.spawnParticle(particle.x, particle.y + randomDirectionY, type.freezingResultSecond, true);
-                            } else if (this.isFree(particle.x, particle.y - randomDirectionY)) {
+                            }
+                            else if (this.isFree(particle.x, particle.y - randomDirectionY)) {
                                 this.spawnParticle(particle.x, particle.y - randomDirectionY, type.freezingResultSecond, true);
-                            } else {
+                            }
+                            else {
                                 this.spawnParticle(particle.x, particle.y, type.freezingResultSecond, true);
                             }
                         }
@@ -1408,25 +1360,34 @@ export class Powders {
                                 const randomDirectionY = n101random(false);
                                 if (this.isFree(particle.x + randomDirectionX, particle.y + randomDirectionY)) {
                                     this.spawnParticle(particle.x + randomDirectionX, particle.y + randomDirectionY, "fire", true);
-                                } else if (this.isFree(particle.x - randomDirectionX, particle.y - randomDirectionY)) {
+                                }
+                                else if (this.isFree(particle.x - randomDirectionX, particle.y - randomDirectionY)) {
                                     this.spawnParticle(particle.x - randomDirectionX, particle.y - randomDirectionY, "fire", true);
-                                } else if (this.isFree(particle.x + randomDirectionX, particle.y - randomDirectionY)) {
+                                }
+                                else if (this.isFree(particle.x + randomDirectionX, particle.y - randomDirectionY)) {
                                     this.spawnParticle(particle.x + randomDirectionX, particle.y - randomDirectionY, "fire", true);
-                                } else if (this.isFree(particle.x - randomDirectionX, particle.y + randomDirectionY)) {
+                                }
+                                else if (this.isFree(particle.x - randomDirectionX, particle.y + randomDirectionY)) {
                                     this.spawnParticle(particle.x - randomDirectionX, particle.y + randomDirectionY, "fire", true);
-                                } else if (this.isFree(particle.x + randomDirectionX, particle.y)) {
+                                }
+                                else if (this.isFree(particle.x + randomDirectionX, particle.y)) {
                                     this.spawnParticle(particle.x + randomDirectionX, particle.y, "fire", true);
-                                } else if (this.isFree(particle.x - randomDirectionX, particle.y)) {
+                                }
+                                else if (this.isFree(particle.x - randomDirectionX, particle.y)) {
                                     this.spawnParticle(particle.x - randomDirectionX, particle.y, "fire", true);
-                                } else if (this.isFree(particle.x, particle.y + randomDirectionY)) {
+                                }
+                                else if (this.isFree(particle.x, particle.y + randomDirectionY)) {
                                     this.spawnParticle(particle.x, particle.y + randomDirectionY, "fire", true);
-                                } else if (this.isFree(particle.x, particle.y - randomDirectionY)) {
+                                }
+                                else if (this.isFree(particle.x, particle.y - randomDirectionY)) {
                                     this.spawnParticle(particle.x, particle.y - randomDirectionY, "fire", true);
-                                } else {
+                                }
+                                else {
                                     this.spawnParticle(particle.x, particle.y, type.burnInto ? type.burnInto : "fire", true);
                                 }
                             }
-                        } else {
+                        }
+                        else {
                             particle.onFire = false; // If not flammable, stop being on fire
                         }
                     }
@@ -1438,17 +1399,16 @@ export class Powders {
         this.tmpGrid = null;
         this.updatePositions();
     }
-
-    public toggleDebug() {
-        const debugInfo = document.getElementById("debug-info")!;
+    toggleDebug() {
+        const debugInfo = document.getElementById("debug-info");
         if (debugInfo.style.display === "none") {
             debugInfo.style.display = "block";
-        } else {
+        }
+        else {
             debugInfo.style.display = "none";
         }
     }
-
-    public mouseDraw() {
+    mouseDraw() {
         if (this.selectedTool === null) {
             if (!(this.mouseLeftDown || this.mouseRightDown) || !this.selectedType) {
                 this.lastMouseX = this.mouseX;
@@ -1459,21 +1419,21 @@ export class Powders {
                 this.lastMouseX = this.mouseX;
                 this.lastMouseY = this.mouseY;
             }
-        } else {
+        }
+        else {
             this.lastMouseX = this.mouseX;
             this.lastMouseY = this.mouseY;
-            const toolAction = toolTypes.require(this.selectedTool!).action;
+            const toolAction = toolTypes.require(this.selectedTool).action;
             if (toolAction) {
                 toolAction(this, this.mouseX, this.mouseY);
             }
         }
     }
-
-    public getParticlesInCircle(centerX: number, centerY: number, radius: number): Particle[] {
-        const particles: Particle[] = [];
+    getParticlesInCircle(centerX, centerY, radius) {
+        const particles = [];
         const radiusSquared = radius * radius;
         for (let y = Math.max(0, Math.floor(centerY - radius)); y <= Math.min(this.grid.length - 1, Math.ceil(centerY + radius)); y++) {
-            for (let x = Math.max(0, Math.floor(centerX - radius)); x <= Math.min(this.grid[y]!.length - 1, Math.ceil(centerX + radius)); x++) {
+            for (let x = Math.max(0, Math.floor(centerX - radius)); x <= Math.min(this.grid[y].length - 1, Math.ceil(centerX + radius)); x++) {
                 const dx = x - centerX;
                 const dy = y - centerY;
                 if (dx * dx + dy * dy <= radiusSquared) {
@@ -1486,9 +1446,8 @@ export class Powders {
         }
         return particles;
     }
-
-    public getParticlesInSquare(x: number, y: number, width: number, height: number): Particle[] {
-        const particles: Particle[] = [];
+    getParticlesInSquare(x, y, width, height) {
+        const particles = [];
         if (width === 0 && height === 0) {
             const particle = this.getParticle(x, y);
             if (particle) {
@@ -1506,7 +1465,7 @@ export class Powders {
             return particles;
         }
         if (height === 0) {
-            for (let i = Math.max(0, x); i < Math.min(this.grid[0]!.length, x + width); i++) {
+            for (let i = Math.max(0, x); i < Math.min(this.grid[0].length, x + width); i++) {
                 const particle = this.getParticle(i, y);
                 if (particle) {
                     particles.push(particle);
@@ -1515,7 +1474,7 @@ export class Powders {
             return particles;
         }
         for (let j = Math.max(0, y); j < Math.min(this.grid.length, y + height); j++) {
-            for (let i = Math.max(0, x); i < Math.min(this.grid[j]!.length, x + width); i++) {
+            for (let i = Math.max(0, x); i < Math.min(this.grid[j].length, x + width); i++) {
                 const particle = this.getParticle(i, j);
                 if (particle) {
                     particles.push(particle);
@@ -1524,25 +1483,26 @@ export class Powders {
         }
         return particles;
     }
-
-    public render() {
+    render() {
         this.debugRenderShapes = this.debugRenderShapes.filter(shape => shape.forTick);
         const toolData = this.selectedTool ? toolTypes.require(this.selectedTool) : null;
         if (toolData && !toolData.onTick) {
             this.mouseDraw();
-        } else if (this.selectedTool === null) {
+        }
+        else if (this.selectedTool === null) {
             this.mouseDraw(); // For drawing.
         }
         this.ctx.fillStyle = "black";
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        let glows: { x: number; y: number; color: string }[] = [];
+        let glows = [];
         for (let y = 0; y < this.grid.length; y++) {
-            for (let x = 0; x < this.grid[y]!.length; x++) {
-                const particle = this.grid[y]![x];
+            for (let x = 0; x < this.grid[y].length; x++) {
+                const particle = this.grid[y][x];
                 if (particle && particle.type !== null) {
                     const type = powderTypes.require(particle.type);
                     // particle.deco ? particle.deco : type.color;
-                    const drawColor = particle.deco ? particle.deco : type.color;;
+                    const drawColor = particle.deco ? particle.deco : type.color;
+                    ;
                     if (type.luminosity) {
                         glows.push({ x, y, color: drawColor });
                     }
@@ -1564,9 +1524,9 @@ export class Powders {
         }
         // Debug info
         const mouseParticle = this.getParticle(this.mouseX, this.mouseY);
-        const debugMousePos = document.getElementById("dbg-mouse-pos")!;
+        const debugMousePos = document.getElementById("dbg-mouse-pos");
         debugMousePos.textContent = `${this.mouseX}, ${this.mouseY} (${mouseParticle?.type ?? "none"})`;
-        const debugParticleInfo = document.getElementById("dbg-particle-info")!;
+        const debugParticleInfo = document.getElementById("dbg-particle-info");
         debugParticleInfo.textContent = mouseParticle ? `Particle type: ${mouseParticle.type}, Particle deco: ${mouseParticle.deco ?? "none"}, Particle Temperature (Celsius): ${mouseParticle.temp ?? "N/A"}` : "No particle";
         // Draw brush preview
         this.ctx.fillStyle = "white";
@@ -1583,15 +1543,13 @@ export class Powders {
         }
         this.ctx.globalAlpha = 1.0;
     }
-
-    public getParticle(x: number, y: number): Particle | null {
-        if (y >= 0 && y < this.grid.length && x >= 0 && x < this.grid[y]!.length) {
-            return this.grid[y]![x]!;
+    getParticle(x, y) {
+        if (y >= 0 && y < this.grid.length && x >= 0 && x < this.grid[y].length) {
+            return this.grid[y][x];
         }
         return null;
     }
-
-    public startGame() {
+    startGame() {
         console.log("Starting Powders game...");
         this.resize(this.canvas.width, this.canvas.height);
         this.listenInputs();
@@ -1601,14 +1559,15 @@ export class Powders {
                 setTimeout(() => {
                     requestAnimationFrame(gameLoop);
                 }, 1000 / this.tickRate);
-            } else {
+            }
+            else {
                 requestAnimationFrame(gameLoop);
             }
         };
         const renderLoop = () => {
             this.render();
             requestAnimationFrame(renderLoop);
-        }
+        };
         const toolTickLoop = () => {
             const toolData = this.selectedTool ? toolTypes.require(this.selectedTool) : null;
             if (toolData && toolData.onTick) {
@@ -1617,16 +1576,15 @@ export class Powders {
             setTimeout(() => {
                 requestAnimationFrame(toolTickLoop);
             }, 1000 / this.tickRate);
-        }
+        };
         requestAnimationFrame(gameLoop);
         requestAnimationFrame(renderLoop);
         requestAnimationFrame(toolTickLoop);
     }
-
-    public reset(generateTerrain: boolean = true) {
+    reset(generateTerrain = true) {
         this.grid = [];
         for (let y = 0; y < this.height; y++) {
-            const row: Particle[] = [];
+            const row = [];
             for (let x = 0; x < this.width; x++) {
                 row.push(new Particle(x, y, null));
             }
@@ -1636,42 +1594,37 @@ export class Powders {
             this.generateSimpleTerrain();
         }
     }
-
-    public resize(width: number, height: number, generateTerrain: boolean = true) {
+    resize(width, height, generateTerrain = true) {
         this.canvas.width = width;
         this.canvas.height = height;
         this.width = width;
         this.height = height;
         this.reset(generateTerrain);
     }
-
-    public updatePositions() {
-        const newGrid: Particle[][] = [];
+    updatePositions() {
+        const newGrid = [];
         for (let y = 0; y < this.grid.length; y++) {
-            const newRow: Particle[] = [];
-            for (let x = 0; x < this.grid[y]!.length; x++) {
+            const newRow = [];
+            for (let x = 0; x < this.grid[y].length; x++) {
                 newRow.push(new Particle(x, y, null));
             }
             newGrid.push(newRow);
         }
-
         for (let y = 0; y < this.grid.length; y++) {
-            for (let x = 0; x < this.grid[y]!.length; x++) {
-                const particle = this.grid[y]![x];
+            for (let x = 0; x < this.grid[y].length; x++) {
+                const particle = this.grid[y][x];
                 if (particle && particle.type !== null) {
                     particle.x = particle.x;
                     particle.y = particle.y;
-                    const newX = Math.max(0, Math.min(particle.x, newGrid[0]!.length - 1));
+                    const newX = Math.max(0, Math.min(particle.x, newGrid[0].length - 1));
                     const newY = Math.max(0, Math.min(particle.y, newGrid.length - 1));
-                    newGrid[newY]![newX] = particle;
+                    newGrid[newY][newX] = particle;
                 }
             }
         }
-
         this.grid = newGrid;
     }
-
-    public crushParticle(x: number, y: number) {
+    crushParticle(x, y) {
         const particle = this.getParticle(x, y);
         if (particle && particle.type) {
             const type = powderTypes.require(particle.type);
@@ -1680,8 +1633,7 @@ export class Powders {
             }
         }
     }
-
-    public generateSimpleTerrain() {
+    generateSimpleTerrain() {
         const bedrockHeight = this.canvas.height - 1; // Bedrock layer at the bottom
         const stoneHeight = this.canvas.height * (1 - 0.2); // Stone layer above bedrock
         const dirtHeight = this.canvas.height * (1 - 0.3); // Dirt layer above stone
@@ -1689,21 +1641,22 @@ export class Powders {
         for (let y = 0; y < this.canvas.height; y++) {
             for (let x = 0; x < this.canvas.width; x++) {
                 if (y >= bedrockHeight) {
-                    this.grid[y]![x] = new Particle(x, y, PowderTypes.BEDROCK);
-                } else if (y >= stoneHeight) {
-                    this.grid[y]![x] = new Particle(x, y, PowderTypes.STONE);
+                    this.grid[y][x] = new Particle(x, y, PowderTypes.BEDROCK);
+                }
+                else if (y >= stoneHeight) {
+                    this.grid[y][x] = new Particle(x, y, PowderTypes.STONE);
                 }
                 else if (y >= dirtHeight) {
-                    this.grid[y]![x] = new Particle(x, y, "dirt");
-                } else if (y >= grassHeight) {
-                    this.grid[y]![x] = new Particle(x, y, "grass");
+                    this.grid[y][x] = new Particle(x, y, "dirt");
+                }
+                else if (y >= grassHeight) {
+                    this.grid[y][x] = new Particle(x, y, "grass");
                 }
             }
         }
     }
-
-    public getParticlesInLine(x1: number, y1: number, x2: number, y2: number): Particle[] {
-        const particles: Particle[] = [];
+    getParticlesInLine(x1, y1, x2, y2) {
+        const particles = [];
         const dx = x2 - x1;
         const dy = y2 - y1;
         const steps = Math.max(Math.abs(dx), Math.abs(dy));
@@ -1726,8 +1679,7 @@ export class Powders {
         }
         return particles;
     }
-
-    public explode(x: number, y: number, radius: number, force: number, lightFire: boolean = true, nuclear: boolean = false) {
+    explode(x, y, radius, force, lightFire = true, nuclear = false) {
         const resolution = 32; // 32 rays for a more circular explosion.
         for (let i = 0; i < resolution; i++) {
             const angle = (i / resolution) * 2 * Math.PI;
@@ -1736,7 +1688,7 @@ export class Powders {
             const particlesInRay = this.getParticlesInLine(x, y, Math.floor(x + rayX * (radius + (nuclear ? 5 : 0))), Math.floor(y + rayY * (radius + (nuclear ? 5 : 0))));
             let currentForce = force;
             for (let j = 0; j < particlesInRay.length; j++) {
-                const particle = particlesInRay[j]!;
+                const particle = particlesInRay[j];
                 if (j >= radius) {
                     if (!nuclear) {
                         break; // Stop the ray if it goes beyond the explosion radius (unless it's a nuclear explosion, which has lingering radiation)
@@ -1756,11 +1708,13 @@ export class Powders {
                         const radiationY = Math.floor(y + rayY * (radius + 5 + n101random()));
                         if (this.isFree(radiationX, radiationY)) {
                             const random = Math.random();
-                            if (random < 0.6) {
+                            if (random < 0.75) {
                                 this.spawnParticle(radiationX, radiationY, "radiation", true);
-                            } else if (random < 0.8) {
+                            }
+                            else if (random < 0.875) {
                                 this.spawnParticle(radiationX, radiationY, "plasma", true);
-                            } else { // Neutron particles added in 1.0.0.
+                            }
+                            else { // Neutron particles added in 1.0.0.
                                 this.spawnParticle(radiationX, radiationY, "neutron", true);
                             }
                         }
@@ -1777,43 +1731,40 @@ export class Powders {
                     if (nuclear) {
                         if (random < 0.125) {
                             this.spawnParticle(particle.x, particle.y, "plasma", true);
-                        } else if (random < 0.25) {
+                        }
+                        else if (random < 0.25) {
                             this.spawnParticle(particle.x, particle.y, "fallout", true);
-                        } else {
+                        }
+                        else {
                             this.spawnParticle(particle.x, particle.y, null, true);
                         }
                     }
-                } else {
+                }
+                else {
                     break; // Stop the ray if it hits a particle that can fully resist the explosion
                 }
             }
         }
     }
 }
-
-let game: Powders | null = null;
-
+let game = null;
 export function initPowders() {
     if (!game) {
         game = new Powders();
     }
 }
-
 export const powderTypes = new PowderTypes();
 export const toolTypes = new ToolTypes();
 initPowders();
-
 export function startGame() {
     initPowders();
-    game!.startGame();
-    const button = document.getElementById("start-button")!;
+    game.startGame();
+    const button = document.getElementById("start-button");
     button.style.display = "none";
 }
-
-export function getGame(): Powders | null {
+export function getGame() {
     return game;
 }
-
 // Vanilla elements
 powderTypes.register(PowderTypes.SAND, {
     name: "Sand",
@@ -1926,7 +1877,7 @@ powderTypes.register("dirtywater", {
     weight: 0.1, // Heavier than water (water is 0)
     explosionResistance: 0.1, // Only able to resist from impurities
 });
-powderTypes.register("impurity", { // Junk particle.
+powderTypes.register("impurity", {
     name: "Impurity",
     color: "#654321",
     colorVariation: 0.1,
@@ -2006,7 +1957,7 @@ powderTypes.register("metal_dust", {
     meltingResult: "liquid_junk_metal", // Too impure to extract original metal, so just junk
     explosionResistance: 0.0, // Unable to affect explosions.
 });
-powderTypes.register("nuke", { // Large nuclear explosion when lit on fire
+powderTypes.register("nuke", {
     name: "Nuke",
     color: "#1e591e",
     colorVariation: 0.1,
@@ -2024,7 +1975,7 @@ powderTypes.register("nuke", { // Large nuclear explosion when lit on fire
     weight: 10, // Very heavy, to reflect the massive amount of material in a nuke
     explosionResistance: 0, // Cannot resist explosions at all, will be destroyed by other explosions
 });
-powderTypes.register("junk_metal", { // Not very reactive or useful, just junk
+powderTypes.register("junk_metal", {
     name: "Junk Metal",
     color: "#7f7f7f",
     colorVariation: 0.2,
@@ -2074,7 +2025,7 @@ powderTypes.register("ash", {
     crushResult: "dust", // Ash crushes into dust.
     explosionResistance: 0.05, // Ash can slightly resist explosions, reducing their damage by 0.05 units
 });
-function falloutBehavior(game: Powders, particle: Particle, behavior: (game: Powders, particle: Particle) => void = powderBehavior) {
+function falloutBehavior(game, particle, behavior = powderBehavior) {
     behavior(game, particle);
     // Emit radiation particles around the fallout
     if (Math.random() < 0.025) { // 2.5% chance each tick to emit radiation
@@ -2086,17 +2037,19 @@ function falloutBehavior(game: Powders, particle: Particle, behavior: (game: Pow
         }
     }
 }
-function particleWalkSideways(game: Powders, particle: Particle, direction: number) {
+function particleWalkSideways(game, particle, direction) {
     // Try to "walk" sideways, stepping up or down if needed.
     if (game.isFree(particle.x + direction, particle.y)) {
         game.swapParticles(particle.x, particle.y, particle.x + direction, particle.y);
-    } else if (game.isFree(particle.x + direction, particle.y - 1)) {
+    }
+    else if (game.isFree(particle.x + direction, particle.y - 1)) {
         game.swapParticles(particle.x, particle.y, particle.x + direction, particle.y - 1);
-    } else if (game.isFree(particle.x + direction, particle.y + 1)) {
+    }
+    else if (game.isFree(particle.x + direction, particle.y + 1)) {
         game.swapParticles(particle.x, particle.y, particle.x + direction, particle.y + 1);
     }
 }
-function particleJump(game: Powders, particle: Particle) {
+function particleJump(game, particle) {
     if (game.isFree(particle.x, particle.y + 1)) {
         return; // Cannot jump, no ground
     }
@@ -2104,25 +2057,29 @@ function particleJump(game: Powders, particle: Particle) {
     if (game.isFree(particle.x, particle.y - 1)) {
         game.swapParticles(particle.x, particle.y, particle.x, particle.y - 1);
         game.renderDebugSquare(particle.x, particle.y - 1, 1, 1, "rgba(0, 255, 255, 0.5)");
-    } else if (game.isFree(particle.x - 1, particle.y - 1)) {
+    }
+    else if (game.isFree(particle.x - 1, particle.y - 1)) {
         game.swapParticles(particle.x, particle.y, particle.x - 1, particle.y - 1);
         game.renderDebugSquare(particle.x - 1, particle.y - 1, 1, 1, "rgba(0, 255, 255, 0.5)");
-    } else if (game.isFree(particle.x + 1, particle.y - 1)) {
+    }
+    else if (game.isFree(particle.x + 1, particle.y - 1)) {
         game.swapParticles(particle.x, particle.y, particle.x + 1, particle.y - 1);
         game.renderDebugSquare(particle.x + 1, particle.y - 1, 1, 1, "rgba(0, 255, 255, 0.5)");
     }
 }
-function particleFly(game: Powders, particle: Particle, direction: number) {
+function particleFly(game, particle, direction) {
     // Try to fly up/down in the given direction, then sideways if needed.
     if (game.isFree(particle.x, particle.y - direction)) {
         game.swapParticles(particle.x, particle.y, particle.x, particle.y - direction);
-    } else if (game.isFree(particle.x - 1, particle.y - direction)) {
+    }
+    else if (game.isFree(particle.x - 1, particle.y - direction)) {
         game.swapParticles(particle.x, particle.y, particle.x - 1, particle.y - direction);
-    } else if (game.isFree(particle.x + 1, particle.y - direction)) {
+    }
+    else if (game.isFree(particle.x + 1, particle.y - direction)) {
         game.swapParticles(particle.x, particle.y, particle.x + 1, particle.y - direction);
     }
 }
-function creatureDefaultBehaviors(game: Powders, particle: Particle) {
+function creatureDefaultBehaviors(game, particle) {
     // If the creature touches a particle tagged with "ai_kill", it dies (turns into nothing).
     const killTag = "ai_kill";
     const adjacentParticles = game.getAdjacentParticles(particle.x, particle.y);
@@ -2136,19 +2093,17 @@ function creatureDefaultBehaviors(game: Powders, particle: Particle) {
         if (particle.bvs4 <= 0) {
             // Died to hunger.
             game.spawnParticle(particle.x, particle.y, "blood", true);
-        } else {
+        }
+        else {
             particle.bvs4--; // Decrease hunger timer each tick, when it reaches 0 the creature dies of hunger
         }
     }
 }
-
-const creatureMaxHunger = 200
-
-function creatureOnSpawn(game: Powders, particle: Particle) {
+const creatureMaxHunger = 200;
+function creatureOnSpawn(game, particle) {
     particle.bvs4 = creatureMaxHunger; // BSV4 will be used as hunger (<80 ticks will search for food)
 }
-
-function creatureEatParticle(game: Powders, particle: Particle) {
+function creatureEatParticle(game, particle) {
     const foodTag = "edible";
     const adjacentParticles = game.getAdjacentParticles(particle.x, particle.y);
     for (const p of adjacentParticles) {
@@ -2159,8 +2114,7 @@ function creatureEatParticle(game: Powders, particle: Particle) {
         }
     }
 }
-
-function creaturePoiCheck(game: Powders, particle: Particle, viewDistX: number, viewDistY: number): { typeFound: "poi_food" | "poi_danger" | null, directionX: number, directionY: number, poiX: number, poiY: number, isAdjacent: boolean } {
+function creaturePoiCheck(game, particle, viewDistX, viewDistY) {
     const poiFoodTag = "edible";
     const poiDangerTag = "ai_danger";
     const poiTag = "ai_poi";
@@ -2172,11 +2126,11 @@ function creaturePoiCheck(game: Powders, particle: Particle, viewDistX: number, 
     let poiY = 0;
     let isAdjacent = false;
     let closestDistance = Infinity;
-    const squareX = particle.x - viewDistX
-    const squareY = particle.y - viewDistY
+    const squareX = particle.x - viewDistX;
+    const squareY = particle.y - viewDistY;
     const squareWidth = viewDistX * 2 + 1;
     const squareHeight = viewDistY * 2 + 1;
-    let nearbyParticles = game.getParticlesInSquare(squareX, squareY, squareWidth, squareHeight).filter(p => p !== null) as Particle[]; // Get all particles in the square around the creature, filtering out nulls
+    let nearbyParticles = game.getParticlesInSquare(squareX, squareY, squareWidth, squareHeight).filter(p => p !== null); // Get all particles in the square around the creature, filtering out nulls
     nearbyParticles = nearbyParticles.filter(p => p.type && powderTypes.isTagged(p.type, poiTag)); // Filter to only particles that are tagged as POIs
     game.renderDebugSquare(squareX, squareY, squareWidth, squareHeight, "rgba(255, 0, 255, 0.5)");
     for (const p of nearbyParticles) {
@@ -2191,7 +2145,8 @@ function creaturePoiCheck(game: Powders, particle: Particle, viewDistX: number, 
                     poiX = p.x;
                     poiY = p.y;
                 }
-            } else if (powderTypes.isTagged(p.type, poiFoodTag)) {
+            }
+            else if (powderTypes.isTagged(p.type, poiFoodTag)) {
                 if (distance < closestDistance) {
                     foundFood = true;
                     closestDistance = distance;
@@ -2209,17 +2164,17 @@ function creaturePoiCheck(game: Powders, particle: Particle, viewDistX: number, 
     directionX = directionX === 0 ? 0 : directionX / Math.abs(directionX); // Normalize to -1, 0, or 1
     directionY = directionY === 0 ? 0 : directionY / Math.abs(directionY);
     directionY = -directionY;
-    let typeFound: "poi_food" | "poi_danger" | null = null;
+    let typeFound = null;
     if (foundDanger) {
         typeFound = "poi_danger";
-    } else if (foundFood) {
+    }
+    else if (foundFood) {
         typeFound = "poi_food";
     }
     game.renderDebugSquare(poiX, poiY, 1, 1, "rgba(0, 0, 255, 1.0)"); // Debug square for target POI
     return { typeFound, directionX, directionY, poiX, poiY, isAdjacent };
 }
-
-function landCreatureBehavior(game: Powders, particle: Particle) {
+function landCreatureBehavior(game, particle) {
     creatureDefaultBehaviors(game, particle);
     const viewDistanceX = 8;
     const viewDistanceY = 8;
@@ -2227,19 +2182,18 @@ function landCreatureBehavior(game: Powders, particle: Particle) {
         const dangerDirectionX = particle.bvs1;
         particle.bvs2--; // Decrease the timer for running away
         particleWalkSideways(game, particle, -dangerDirectionX);
-    } else {
+    }
+    else {
         // Simple land creature behavior, moves randomly left or right, sometimes jumping.
         let moveDirectionX = n101random(); // Set to false to lower movement chance.
         let doJump = false;
         if (!game.disableAi) {
             // Check view for POIs
-
             const poiResult = creaturePoiCheck(game, particle, viewDistanceX, viewDistanceY);
             const dangerNearby = poiResult.typeFound === "poi_danger";
             const foodNearby = poiResult.typeFound === "poi_food";
             let directionX = poiResult.directionX;
             const directionY = poiResult.directionY;
-
             // If danger is nearby, "panic" (try to move away)
             if (dangerNearby) {
                 if (directionX === 0) {
@@ -2251,10 +2205,12 @@ function landCreatureBehavior(game: Powders, particle: Particle) {
                 particle.bvs1 = directionX; // Store the danger direction in behavior value 1 to run
                 particle.bvs2 = 5; // Continue running away for 5 ticks
                 moveDirectionX = -directionX; // Move in the opposite direction of the danger
-            } else if (foodNearby && particle.bvs4 < 80) { // If food is nearby and hunger is below 80, try to move towards it
+            }
+            else if (foodNearby && particle.bvs4 < 80) { // If food is nearby and hunger is below 80, try to move towards it
                 if (poiResult.isAdjacent) {
                     creatureEatParticle(game, particle); // If the food is adjacent, eat it instead of moving
-                } else {
+                }
+                else {
                     if (directionY < 0) {
                         doJump = true; // If food is above, try jumping to reach it
                     }
@@ -2262,9 +2218,7 @@ function landCreatureBehavior(game: Powders, particle: Particle) {
                 moveDirectionX = directionX;
             }
         }
-
         doJump = doJump || (Math.random() < 0.05); // 5% chance each tick to try jumping even without food above, to add some vertical movement
-
         if (moveDirectionX !== 0) {
             particleWalkSideways(game, particle, moveDirectionX);
         }
@@ -2279,7 +2233,7 @@ function landCreatureBehavior(game: Powders, particle: Particle) {
 }
 const flightHeightY = 0.1; // Y Level percent of where flying creatures try to stay.
 const flightHeightEndY = 0.3; // Y Level percent of where flying creatures try to stay, if they go below this they will try to fly up.
-function flyingCreatureBehavior(game: Powders, particle: Particle, birdLimits: boolean = true) {
+function flyingCreatureBehavior(game, particle, birdLimits = true) {
     const viewDistanceX = 8;
     const viewDistanceY = game.height; // Flying, can see farther up and down (to find food on ground).
     creatureDefaultBehaviors(game, particle);
@@ -2289,7 +2243,8 @@ function flyingCreatureBehavior(game: Powders, particle: Particle, birdLimits: b
         particle.bvs2--;
         particleWalkSideways(game, particle, -dangerDirectionX); // Fly away from danger direction
         particleFly(game, particle, -dangerDirectionY); // Fly away vertically from danger
-    } else {
+    }
+    else {
         let moveDirectionX = n101random();
         // Simple flying creature behavior, moves randomly in all directions.
         let moveDirectionY = n101random(false);
@@ -2300,7 +2255,6 @@ function flyingCreatureBehavior(game: Powders, particle: Particle, birdLimits: b
             const foodNearby = poiResult.typeFound === "poi_food";
             let directionX = poiResult.directionX;
             const directionY = poiResult.directionY;
-
             // If danger is nearby, try to move away from it
             if (dangerNearby) {
                 if (directionX === 0) {
@@ -2311,11 +2265,13 @@ function flyingCreatureBehavior(game: Powders, particle: Particle, birdLimits: b
                 particle.bvs1 = directionX; // Store the danger direction in behavior value 1 to run
                 particle.bvs2 = 5; // Continue running away for 5 ticks
                 particle.bvs3 = directionY; // Store the vertical danger direction in behavior value 3 to run
-            } else if (foodNearby && particle.bvs4 < 80) { // If food is nearby and hunger is below 80, try to move towards it
-                console.log
+            }
+            else if (foodNearby && particle.bvs4 < 80) { // If food is nearby and hunger is below 80, try to move towards it
+                console.log;
                 if (poiResult.isAdjacent) {
                     creatureEatParticle(game, particle); // If the food is adjacent, eat it instead of moving
-                } else {
+                }
+                else {
                     moveDirectionX = directionX;
                     moveDirectionY = directionY;
                     overrideWantStayHigh = true; // If the food is not adjacent, override the flying creature's desire to stay at a certain height to try to reach the food, even if it's on the ground
@@ -2327,10 +2283,12 @@ function flyingCreatureBehavior(game: Powders, particle: Particle, birdLimits: b
         if (particle.y < startFlightHeight && !overrideWantStayHigh) {
             // If above flight height, try to fly up
             particleFly(game, particle, -1);
-        } else if (particle.y > endFlightHeight && !overrideWantStayHigh) {
+        }
+        else if (particle.y > endFlightHeight && !overrideWantStayHigh) {
             // If below flight height, try to fly down
             particleFly(game, particle, 1);
-        } else {
+        }
+        else {
             // Otherwise, move randomly left or right, and up or down
             if (moveDirectionX !== 0) {
                 particleWalkSideways(game, particle, moveDirectionX);
@@ -2342,13 +2300,13 @@ function flyingCreatureBehavior(game: Powders, particle: Particle, birdLimits: b
         particleWalkSideways(game, particle, moveDirectionX); // Try to move sideways as well for more dynamic movement
     }
 }
-function flyingNonBirdBehavior(game: Powders, particle: Particle) {
-    flyingCreatureBehavior(game, particle, false)
+function flyingNonBirdBehavior(game, particle) {
+    flyingCreatureBehavior(game, particle, false);
 }
-powderTypes.addToTag("#edible", "ai_poi")
-powderTypes.addToTag("#ai_danger", "ai_poi")
-powderTypes.addToTag("#ai_kill", "ai_danger")
-powderTypes.register("fallout", { // Similar to ash but heavier and emits radiation
+powderTypes.addToTag("#edible", "ai_poi");
+powderTypes.addToTag("#ai_danger", "ai_poi");
+powderTypes.addToTag("#ai_kill", "ai_danger");
+powderTypes.register("fallout", {
     name: "Fallout",
     color: "#4f604d",
     colorVariation: 0.1,
@@ -2369,7 +2327,7 @@ powderTypes.register("fallout", { // Similar to ash but heavier and emits radiat
     crushResult: "radioactive_dust", // Fallout crushes into radioactive dust.
     explosionResistance: 0.05, // Same as ash
 });
-powderTypes.addToTag("fallout", "ai_danger")
+powderTypes.addToTag("fallout", "ai_danger");
 powderTypes.register("falloutwater", {
     name: "Fallout Water",
     color: "#3a5f32",
@@ -2396,7 +2354,7 @@ powderTypes.register("falloutwater", {
     weight: 0.1, // Heavier than water (water is 0)
     explosionResistance: 0.1, // Only able to resist from impurities
 });
-powderTypes.addToTag("falloutwater", "ai_danger")
+powderTypes.addToTag("falloutwater", "ai_danger");
 powderTypes.register("fallout_steam", {
     name: "Fallout Steam",
     color: "#2a8053",
@@ -2423,7 +2381,7 @@ powderTypes.register("fallout_steam", {
     weight: -0.1, // Lighter than water
     explosionResistance: 0.0 // ...
 });
-powderTypes.addToTag("fallout_steam", "ai_danger")
+powderTypes.addToTag("fallout_steam", "ai_danger");
 powderTypes.register("poison", {
     name: "Poison",
     color: "#8e11bc",
@@ -2435,7 +2393,7 @@ powderTypes.register("poison", {
     category: "Special",
     weight: 0.1,
 });
-powderTypes.addToTag("poison", "ai_kill") // If a creature touches poison, it dies.
+powderTypes.addToTag("poison", "ai_kill"); // If a creature touches poison, it dies.
 powderTypes.register("fallout_cloud", {
     name: "Fallout Cloud",
     color: "#1e5f3a",
@@ -2455,7 +2413,8 @@ powderTypes.register("fallout_cloud", {
             // Most of the time retain water
             if (Math.random() < 0.25) {
                 game.spawnParticle(particle.x, particle.y, "fallout", true);
-            } else {
+            }
+            else {
                 game.spawnParticle(particle.x, particle.y, "falloutwater", true);
             }
         }
@@ -2475,11 +2434,11 @@ powderTypes.register("fallout_cloud", {
         }
     ],
     explosionResistance: 0.0 // ...
-})
-powderTypes.addToTag("fallout_cloud", "ai_danger")
+});
+powderTypes.addToTag("fallout_cloud", "ai_danger");
 // Please try not to make the comments with life stuff NOT
 // very gruesome :X
-powderTypes.register("blood", { // Blood, emitted by killed creatures
+powderTypes.register("blood", {
     name: "Blood",
     color: "#8a0303",
     colorVariation: 0.1,
@@ -2495,7 +2454,7 @@ powderTypes.register("blood", { // Blood, emitted by killed creatures
     freezingResult: "blood_ice",
     explosionResistance: 0.0, // Nope.
 });
-powderTypes.register("blood_steam", { // When blood heats up, it turns into a steam that can spread out and rise, but still has the same color and properties as blood
+powderTypes.register("blood_steam", {
     name: "Blood Steam",
     color: "#8a0303",
     colorVariation: 0.1,
@@ -2513,7 +2472,7 @@ powderTypes.register("blood_steam", { // When blood heats up, it turns into a st
     freezingResult: "blood",
     explosionResistance: 0.0, // Still nope.
 });
-powderTypes.register("blood_ice", { // When blood cools down, it turns into ice
+powderTypes.register("blood_ice", {
     name: "Blood Ice",
     color: "#8a0303",
     colorVariation: 0.1,
@@ -2528,9 +2487,9 @@ powderTypes.register("blood_ice", { // When blood cools down, it turns into ice
     explosionResistance: 0.0, // Still nope.
 });
 // If it sees blood it thinks a creature would have died there, so danger
-powderTypes.addToTag("blood", "ai_danger")
-powderTypes.addToTag("blood_steam", "ai_danger")
-powderTypes.addToTag("blood_ice", "ai_danger")
+powderTypes.addToTag("blood", "ai_danger");
+powderTypes.addToTag("blood_steam", "ai_danger");
+powderTypes.addToTag("blood_ice", "ai_danger");
 powderTypes.register("rat", {
     name: "Rat",
     color: "#4e4444",
@@ -2573,7 +2532,7 @@ powderTypes.register("pyrocumulus", {
     name: "Pyrocumulus Cloud",
     color: "#2c211d",
     colorVariation: 0.1,
-    behavior: (game: Powders, particle: Particle) => {
+    behavior: (game, particle) => {
         cloudBehavior(game, particle);
         // Chance to spawn fire particles within the cloud
         if (Math.random() < 0.01) { // 1% chance each tick to spawn fire
@@ -2599,8 +2558,8 @@ powderTypes.register("pyrocumulus", {
     weight: 0.2, // Lighter than regular clouds due to intense heat, so swaps with other clouds more easily to rise higher in the sky
     explosionResistance: 0.0 // ITS A CLOUD 💔
 });
-powderTypes.addToTag("pyrocumulus", "ai_danger")
-powderTypes.addToTag("#molten", "ai_kill") // Molten stuff with kill creatures
+powderTypes.addToTag("pyrocumulus", "ai_danger");
+powderTypes.addToTag("#molten", "ai_kill"); // Molten stuff with kill creatures
 powderTypes.register("cloud", {
     name: "Cloud",
     color: "#d2d8d8",
@@ -2647,7 +2606,7 @@ powderTypes.register("lava", {
     weight: 2, // Heavier than water
     explosionResistance: 0.2 // Slightly resistant to explosions, can withstand some damage
 });
-powderTypes.addToTag("lava", "molten")
+powderTypes.addToTag("lava", "molten");
 powderTypes.register(PowderTypes.STONE, {
     name: "Stone",
     color: "#808080",
@@ -2754,7 +2713,7 @@ powderTypes.register("propane", {
     gasWeight: 0.1, // Moves up
     reverseGravity: true,
     flammability: 1.0, // Will spawn fire particles each tick it is on fire
-})
+});
 powderTypes.register("dead_plant", {
     name: "Dead Plant",
     color: "#654321",
@@ -2799,12 +2758,12 @@ powderTypes.register("mud", {
     weight: 0.99, // Make mud go on top of dirt
     explosionResistance: 0.1 // Slightly resistant to explosions, can withstand some damage
 });
-powderTypes.addToTag("dirt", "growable")
-powderTypes.addToTag("dead_plant", "growable")
-powderTypes.addToTag("dead_plant", "edible") // Creatures can eat dead plants.
-powderTypes.addToTag("mud", "growable") // You can grow plants on mud, because it's wet and has nutrients
-function plantLivableCheck(game: Powders, particle: Particle, mustBeOn: string) {
-    const canBeOn = game.processTypeId(mustBeOn) as (string | null)[];
+powderTypes.addToTag("dirt", "growable");
+powderTypes.addToTag("dead_plant", "growable");
+powderTypes.addToTag("dead_plant", "edible"); // Creatures can eat dead plants.
+powderTypes.addToTag("mud", "growable"); // You can grow plants on mud, because it's wet and has nutrients
+function plantLivableCheck(game, particle, mustBeOn) {
+    const canBeOn = game.processTypeId(mustBeOn);
     const adjacent = game.getAdjacentParticles(particle.x, particle.y);
     for (const adj of adjacent) {
         if (adj && canBeOn.includes(adj.type ?? "")) {
@@ -2813,7 +2772,7 @@ function plantLivableCheck(game: Powders, particle: Particle, mustBeOn: string) 
     }
     return false;
 }
-function plantDieNotLivable(game: Powders, particle: Particle, mustBeOn: string) {
+function plantDieNotLivable(game, particle, mustBeOn) {
     if (!plantLivableCheck(game, particle, mustBeOn)) {
         game.spawnParticle(particle.x, particle.y, "dead_plant", true); // If the plant is not on a valid type, it dies and turns into dead plant matter
     }
@@ -2826,15 +2785,17 @@ powderTypes.register("grass", {
         solidBehavior(game, particle); // Grass behaves like a solid to allow creatures to stand on it
         // Chance to spread to adjacent growable particles
         if (Math.random() < 0.05) { // 5% chance each tick to try spreading
-            const growDirectionX = n101random() // Pick random direction to grow in
+            const growDirectionX = n101random(); // Pick random direction to grow in
             const sideParticle = game.getParticle(particle.x + growDirectionX, particle.y);
             if (sideParticle && powderTypes.isTagged(sideParticle.type ?? "", "growable") && game.isFree(particle.x + growDirectionX, particle.y - 1)) {
                 game.spawnParticle(particle.x + growDirectionX, particle.y, "grass", true);
-            } else {
+            }
+            else {
                 const belowParticle = game.getParticle(particle.x + growDirectionX, particle.y + 1);
                 if (belowParticle && powderTypes.isTagged(belowParticle.type ?? "", "growable") && game.isFree(particle.x + growDirectionX, particle.y)) {
                     game.spawnParticle(particle.x + growDirectionX, particle.y + 1, "grass", true);
-                } else {
+                }
+                else {
                     const aboveParticle = game.getParticle(particle.x + growDirectionX, particle.y - 1);
                     if (aboveParticle && powderTypes.isTagged(aboveParticle.type ?? "", "growable") && game.isFree(particle.x + growDirectionX, particle.y - 2)) {
                         game.spawnParticle(particle.x + growDirectionX, particle.y - 1, "grass", true);
@@ -2854,9 +2815,9 @@ powderTypes.register("grass", {
     burnInto: "ash", // When grass burns, it turns into ash to represent the remains of the burnt plant
     crushResult: "dead_plant" // Crushes into dead plants, which can then become dirt
 });
-powderTypes.addToTag("grass", "plant")
-powderTypes.addToTag("grass", "edible")
-powderTypes.addToTag("grass", "growable") // Plants can grow from grass (also grass can override grass).
+powderTypes.addToTag("grass", "plant");
+powderTypes.addToTag("grass", "edible");
+powderTypes.addToTag("grass", "growable"); // Plants can grow from grass (also grass can override grass).
 powderTypes.register("salt", {
     name: "Salt",
     color: "#ffffff",
@@ -2930,7 +2891,7 @@ powderTypes.register("liquid_glass", {
     luminosity: true, // Molten glass emits light
     explosionResistance: 0.0 // Literally worse than normal glass
 });
-powderTypes.addToTag("liquid_glass", "molten")
+powderTypes.addToTag("liquid_glass", "molten");
 powderTypes.register("glass_shard", {
     name: "Glass Shard",
     color: "#a0c8f0",
@@ -2943,8 +2904,7 @@ powderTypes.register("glass_shard", {
     weight: 2.1, // Heavier than regular glass due to its sharp shape
     explosionResistance: 0.005, // Why, just why.
 });
-powderTypes.addToTag("glass_shard", "ai_danger")
-
+powderTypes.addToTag("glass_shard", "ai_danger");
 powderTypes.register("gravel", {
     name: "Gravel",
     color: "#606060",
@@ -3030,7 +2990,7 @@ powderTypes.register(PowderTypes.STEAM, {
     weight: -0.1, // Lighter than water
     explosionResistance: 0.0 // ...
 });
-powderTypes.addToTag("steam", "ai_danger")
+powderTypes.addToTag("steam", "ai_danger");
 powderTypes.register(PowderTypes.LASER, {
     name: "Laser",
     color: "#FF0000",
@@ -3073,7 +3033,7 @@ powderTypes.register("smoke", {
     weight: 0.1, // Lighter than regular clouds
     explosionResistance: 0.0 // Just smoke bro.
 });
-powderTypes.addToTag("smoke", "ai_danger")
+powderTypes.addToTag("smoke", "ai_danger");
 powderTypes.register("fire", {
     name: "Fire",
     color: "#ffb300",
@@ -3084,31 +3044,32 @@ powderTypes.register("fire", {
         const directionY = -1; // Always try to move up
         if (game.canSwap("fire", particle.x + directionX, particle.y + directionY)) {
             game.swapParticles(particle.x, particle.y, particle.x + directionX, particle.y + directionY);
-        } else if (game.canSwap("fire", particle.x, particle.y + directionY)) {
+        }
+        else if (game.canSwap("fire", particle.x, particle.y + directionY)) {
             game.swapParticles(particle.x, particle.y, particle.x, particle.y + directionY);
-        } else if (game.canSwap("fire", particle.x + directionX, particle.y)) {
+        }
+        else if (game.canSwap("fire", particle.x + directionX, particle.y)) {
             game.swapParticles(particle.x, particle.y, particle.x + directionX, particle.y);
         }
         const startColor = powderTypes.require("fire").color;
         const endColor = powderTypes.require("smoke").color; // Fire turns to smoke (black) as it cools
-        const startTemp = powderTypes.require("fire").defaultTemp!;
-        const endTemp = powderTypes.require("smoke").defaultTemp!;
+        const startTemp = powderTypes.require("fire").defaultTemp;
+        const endTemp = powderTypes.require("smoke").defaultTemp;
         const tempRatio = Math.max(0, Math.min(1, (particle.temp - endTemp) / (startTemp - endTemp)));
-        particle.deco = colorCurve(
-            [
-                { offset: 0, color: startColor },
-                { offset: 0.25, color: "#ff8000" },
-                { offset: 0.75, color: "#FF0000" },
-                { offset: 1, color: endColor },
-            ],
-            tempRatio
-        );
+        particle.deco = colorCurve([
+            { offset: 0, color: startColor },
+            { offset: 0.25, color: "#ff8000" },
+            { offset: 0.75, color: "#FF0000" },
+            { offset: 1, color: endColor },
+        ], tempRatio);
         const adjacent = game.getAdjacentParticles(particle.x, particle.y);
         for (const adjacentParticle of adjacent) {
-            if (adjacentParticle.type === null) continue;
+            if (adjacentParticle.type === null)
+                continue;
             if (adjacentParticle.type === "water" && Math.random() < 0.5) {
                 game.removeParticle(adjacentParticle.x, adjacentParticle.y);
-            } else if (powderTypes.require(adjacentParticle.type!).flammability && Math.random() < 0.3) {
+            }
+            else if (powderTypes.require(adjacentParticle.type).flammability && Math.random() < 0.3) {
                 adjacentParticle.lightOnFire();
             }
         }
@@ -3123,7 +3084,7 @@ powderTypes.register("fire", {
     weight: -0.2, // Lighter than steam
     explosionResistance: 0.0 // Isnt this literally triggering the explosion???
 });
-powderTypes.addToTag("fire", "ai_danger")
+powderTypes.addToTag("fire", "ai_danger");
 powderTypes.register("plasma", {
     name: "Plasma",
     color: "#9900ff",
@@ -3136,8 +3097,9 @@ powderTypes.register("plasma", {
         }
         const adjacent = game.getAdjacentParticles(particle.x, particle.y);
         for (const adjacentParticle of adjacent) {
-            if (adjacentParticle.type === null) continue;
-            if (powderTypes.require(adjacentParticle.type!).flammability && Math.random() < 0.5) {
+            if (adjacentParticle.type === null)
+                continue;
+            if (powderTypes.require(adjacentParticle.type).flammability && Math.random() < 0.5) {
                 adjacentParticle.lightOnFire();
             }
         }
@@ -3157,7 +3119,7 @@ powderTypes.register("plasma", {
     weight: -1, // Energy has no weight.
     explosionResistance: 0.0, // You are gonna die to the plasma before the explosion 🥀
 });
-powderTypes.addToTag("plasma", "ai_danger")
+powderTypes.addToTag("plasma", "ai_danger");
 powderTypes.register("coal", {
     name: "Coal",
     color: "#2b2b2b",
@@ -3188,11 +3150,11 @@ powderTypes.register("broken_coal", {
     weight: 1.5,
     explosionResistance: 0.01 // Why.
 });
-powderTypes.register("radiation", { // Generic radiation particle, does pretty much nothing
+powderTypes.register("radiation", {
     name: "Radiation",
     color: "#00ff00",
     colorVariation: 0.25,
-    behavior: (game: Powders, particle: Particle) => {
+    behavior: (game, particle) => {
         staticEnergyBehavior(game, particle);
         if (Math.random() < 0.01) { // 1% chance each tick to vanish
             game.removeParticle(particle.x, particle.y);
@@ -3206,17 +3168,17 @@ powderTypes.register("radiation", { // Generic radiation particle, does pretty m
     weight: -1, // Energy has no weight.
     explosionResistance: 0.0 // WHAT THE HELL ARE YOU DOING
 });
-powderTypes.addToTag("radiation", "ai_kill")
+powderTypes.addToTag("radiation", "ai_kill");
 powderTypes.register("crusher", {
     name: "Crusher",
     color: "#888888",
     colorVariation: 0.2,
-    behavior: (game: Powders, particle: Particle) => {
+    behavior: (game, particle) => {
         const adajcentParticles = game.getAdjacentParticles(particle.x, particle.y);
         for (const adjacent of adajcentParticles) {
             game.crushParticle(adjacent.x, adjacent.y);
         }
-        particle.deco = particle.generateColorVariation()
+        particle.deco = particle.generateColorVariation();
     },
     defaultTemp: 22,
     tempTransferRate: 0.01,
@@ -3226,7 +3188,7 @@ powderTypes.register("crusher", {
     crushResult: null, // Crusher cannot be crushed
     explosionResistance: 2.0 // Pray you dont get thrown to the wall.
 });
-powderTypes.addToTag("crusher", "ai_danger")
+powderTypes.addToTag("crusher", "ai_danger");
 // Already kills via crushing, no need to add to ai_kill
 powderTypes.register("dust", {
     name: "Dust",
@@ -3257,13 +3219,13 @@ powderTypes.register("radioactive_dust", {
     crushResult: null, // Dust cannot be crushed
     explosionResistance: 0.0 // Same thing as dust.
 });
-powderTypes.addToTag("radioactive_dust", "ai_danger")
+powderTypes.addToTag("radioactive_dust", "ai_danger");
 // Version 1.0.0 additions
 powderTypes.register("neutron", {
     name: "Neutron",
     color: "#00ffff",
     colorVariation: 0.1,
-    behavior: (game: Powders, particle: Particle) => {
+    behavior: (game, particle) => {
         energyBehavior(game, particle);
     },
     defaultTemp: 0,
@@ -3280,12 +3242,12 @@ powderTypes.register("neutron", {
         }
     ]
 });
-powderTypes.addToTag("neutron", "ai_kill")
+powderTypes.addToTag("neutron", "ai_kill");
 powderTypes.register("proton", {
     name: "Proton",
     color: "#ff0000",
     colorVariation: 0.1,
-    behavior: (game: Powders, particle: Particle) => {
+    behavior: (game, particle) => {
         energyBehavior(game, particle);
     },
     defaultTemp: 0,
@@ -3295,7 +3257,7 @@ powderTypes.register("proton", {
     weight: -1, // Energy has no weight.
     explosionResistance: 0.0 // You are gonna die to the proton before the explosion 🥀
 });
-powderTypes.addToTag("proton", "ai_kill")
+powderTypes.addToTag("proton", "ai_kill");
 powderTypes.register("hydrogen", {
     name: "Hydrogen",
     color: "#598cb7",
@@ -3324,7 +3286,8 @@ toolTypes.register("heat", {
     name: "Heat Tool",
     color: "#ff0000",
     action: (game, x, y) => {
-        if (!game.mouseLeftDown) return;
+        if (!game.mouseLeftDown)
+            return;
         const halfBrushSize = Math.floor(game.brushSize / 2);
         const particles = game.getParticlesInSquare(x - halfBrushSize, y - halfBrushSize, game.brushSize, game.brushSize);
         for (const particle of particles) {
@@ -3337,7 +3300,8 @@ toolTypes.register("superheat", {
     name: "Superheat Tool",
     color: "#ff4000",
     action: (game, x, y) => {
-        if (!game.mouseLeftDown) return;
+        if (!game.mouseLeftDown)
+            return;
         const halfBrushSize = Math.floor(game.brushSize / 2);
         const particles = game.getParticlesInSquare(x - halfBrushSize, y - halfBrushSize, game.brushSize, game.brushSize);
         for (const particle of particles) {
@@ -3350,7 +3314,8 @@ toolTypes.register("exsuperheat", {
     name: "Extreme Superheat Tool",
     color: "#d84242",
     action: (game, x, y) => {
-        if (!game.mouseLeftDown) return;
+        if (!game.mouseLeftDown)
+            return;
         const halfBrushSize = Math.floor(game.brushSize / 2);
         const particles = game.getParticlesInSquare(x - halfBrushSize, y - halfBrushSize, game.brushSize, game.brushSize);
         for (const particle of particles) {
@@ -3363,7 +3328,8 @@ toolTypes.register("supercool", {
     name: "Supercool Tool",
     color: "#0095ff",
     action: (game, x, y) => {
-        if (!game.mouseLeftDown) return;
+        if (!game.mouseLeftDown)
+            return;
         const halfBrushSize = Math.floor(game.brushSize / 2);
         const particles = game.getParticlesInSquare(x - halfBrushSize, y - halfBrushSize, game.brushSize, game.brushSize);
         for (const particle of particles) {
@@ -3376,7 +3342,8 @@ toolTypes.register("cool", {
     name: "Cool Tool",
     color: "#0000ff",
     action: (game, x, y) => {
-        if (!game.mouseLeftDown) return;
+        if (!game.mouseLeftDown)
+            return;
         const halfBrushSize = Math.floor(game.brushSize / 2);
         const particles = game.getParticlesInSquare(x - halfBrushSize, y - halfBrushSize, game.brushSize, game.brushSize);
         for (const particle of particles) {
@@ -3389,7 +3356,8 @@ toolTypes.register("roomtemp", {
     name: "Room Temperature Tool",
     color: "#d0b067",
     action: (game, x, y) => {
-        if (!game.mouseLeftDown) return;
+        if (!game.mouseLeftDown)
+            return;
         const halfBrushSize = Math.floor(game.brushSize / 2);
         const particles = game.getParticlesInSquare(x - halfBrushSize, y - halfBrushSize, game.brushSize, game.brushSize);
         for (const particle of particles) {
@@ -3402,7 +3370,8 @@ toolTypes.register("eyedropper", {
     name: "Pick Tool",
     color: "#ffffff",
     action: (game, x, y) => {
-        if (!game.mouseLeftDown) return; // Only pick when left mouse button is held down
+        if (!game.mouseLeftDown)
+            return; // Only pick when left mouse button is held down
         const particle = game.getParticle(x, y);
         if (particle) {
             game.selectedType = particle.type;
@@ -3415,7 +3384,8 @@ toolTypes.register("mix", {
     name: "Mix Tool",
     color: "#00ff00",
     action: (game, x, y) => {
-        if (!game.mouseLeftDown) return;
+        if (!game.mouseLeftDown)
+            return;
         const particles = game.getParticlesInSquare(x - game.brushSize, y - game.brushSize, (game.brushSize * 2) + 1, (game.brushSize * 2) + 1);
         const cycles = game.intensifyBrush ? 4 : 2; // Number of times to apply mixing per tick
         for (let i = 0; i < cycles; i++) {
@@ -3434,13 +3404,15 @@ toolTypes.register("crush", {
     name: "Crush Tool",
     color: "#b8b36d",
     action: (game, x, y) => {
-        if (!game.mouseLeftDown) return;
+        if (!game.mouseLeftDown)
+            return;
         const particles = game.getParticlesInSquare(x - game.brushSize, y - game.brushSize, (game.brushSize * 2) + 1, (game.brushSize * 2) + 1);
         for (const particle of particles) {
             if (game.intensifyBrush) {
                 game.crushParticle(particle.x, particle.y);
                 game.crushParticle(particle.x, particle.y); // Crush twice for intensified brush
-            } else {
+            }
+            else {
                 game.crushParticle(particle.x, particle.y);
             }
         }
@@ -3452,15 +3424,16 @@ toolTypes.register("erase", {
     name: "Erase Tool",
     color: "#ffffff",
     action: (game, x, y) => {
-        if (!game.mouseLeftDown) return;
+        if (!game.mouseLeftDown)
+            return;
         game.drawParticleLine(game.lastMouseX, game.lastMouseY, x, y, null, true, game.brushSize); // Draw with null type to erase particles
     },
     onTick: false
 });
-
 export default {
     startGame,
     getGame,
     Powders,
     Particle
 };
+//# sourceMappingURL=powders.js.map
