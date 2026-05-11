@@ -125,6 +125,9 @@ function generateTypeButton(typeId, powders) {
     const button = document.createElement("button");
     button.textContent = type.name;
     button.style.backgroundColor = type.color;
+    if (blackContrastText(type.color)) {
+        button.style.color = "#000000"; // Switch to black text for white elements for visibility
+    }
     button.classList.add("type-button");
     button.onclick = () => {
         powders.selectedType = typeId;
@@ -133,6 +136,17 @@ function generateTypeButton(typeId, powders) {
     return button;
 }
 const showHiddenTypes = new URLSearchParams(window.location.search).get("showHidden") === "true";
+function blackContrastText(color) {
+    // Parse hex color to RGB
+    const hex = color.replace("#", "");
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    // Calculate luminance using relative luminance formula
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    // Return true if background is light (use black text), false if dark (use white text)
+    return luminance > 0.5;
+}
 class ToolTypes {
     registry;
     list = [];
@@ -148,7 +162,7 @@ class ToolTypes {
         const content = document.createElement("button");
         content.textContent = tool.name;
         content.style.backgroundColor = tool.color;
-        if (tool.color === "#ffffff") {
+        if (blackContrastText(tool.color)) {
             content.style.color = "#000000"; // Switch to black text for white tools for visibility
         }
         content.classList.add("type-button");
@@ -3184,7 +3198,7 @@ toolTypes.register("crush", {
 // For mobile users
 toolTypes.register("erase", {
     name: "Erase Tool",
-    color: "#FFFFFF",
+    color: "#ffffff",
     action: (game, x, y) => {
         if (!game.mouseLeftDown)
             return;
