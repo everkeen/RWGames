@@ -1900,6 +1900,9 @@ function particleWalkSideways(game, particle, direction) {
     }
 }
 function particleJump(game, particle) {
+    if (game.isFree(particle.x, particle.y + 1)) {
+        return; // Cannot jump, no ground
+    }
     // Try to "jump" up, then sideways, then up again if needed.
     if (game.isFree(particle.x, particle.y - 1)) {
         game.swapParticles(particle.x, particle.y, particle.x, particle.y - 1);
