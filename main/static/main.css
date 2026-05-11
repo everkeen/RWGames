@@ -42,9 +42,9 @@ footer {
 
 .game-canvas {
     height: auto;
-    width: 100%;
+    width: 80%;
     max-height: calc(100vh - 100px);
-    max-width: 100vw;
+    max-width: 80vw;
     background-color: #000000;
     border-radius: 8px;
     justify-self: center;
