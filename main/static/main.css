@@ -5,15 +5,32 @@
     padding: 20px;
 }
 
-body {
+html {
     margin: 0;
     font-family: Arial, sans-serif;
     background-color: #17171a;
     color: #eee;
 }
 
-body * {
-    color: inherit;
+html * {
+    color: #eee;
+}
+
+html a {
+    color: #61dafb;
+    text-decoration: none;
+}
+
+html a:hover {
+    text-decoration: underline;
+}
+
+html a:visited {
+    color: #e438ff;
+}
+
+.black-text {
+    color: #000000;
 }
 
 .game-canvas-container {
