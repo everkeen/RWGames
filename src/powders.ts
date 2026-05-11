@@ -1027,6 +1027,9 @@ export class Powders {
             this.mouseY = pos.y;
             this.lastMouseX = this.mouseX;
             this.lastMouseY = this.mouseY;
+            if (!this.mouseInBounds()) {
+                return;
+            }
             this.mouseLeftDown = true;
         });
         document.addEventListener("touchend", (e) => {

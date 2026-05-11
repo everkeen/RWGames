@@ -148,6 +148,7 @@ export declare class Powders {
     set paused(value: boolean);
     get paused(): boolean;
     constructor();
+    mouseInBounds(): boolean;
     getSettingsDict(): {
         [key: string]: any;
     };
