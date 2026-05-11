@@ -736,7 +736,7 @@ export class Powders {
             };
             const brushSizeSlider = document.getElementById("mobile-bs") as HTMLInputElement;
             brushSizeSlider.oninput = () => {
-                this.brushSize = parseInt(brushSizeSlider.value, 10);
+                this.brushSize = parseInt(brushSizeSlider.value, 10) - 1;
             };
             const debugModeToggle = document.getElementById("mobile-dmt") as HTMLInputElement;
             debugModeToggle.onclick = () => {
