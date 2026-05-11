@@ -16,15 +16,52 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 80vh;
+    height: calc(100vh - 100px);
     width: 100vw;
+    overflow: hidden;
+}
+
+main {
+    height: calc(100% - 100px);
+}
+
+header {
+    text-align: center;
+    padding: 20px;
+}
+
+footer {
+    text-align: center;
+    padding: 10px;
+    background-color: #222;
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    height: 100px;
 }
 
 .game-canvas {
-    height: 80%;
+    height: auto;
+    width: 100%;
+    max-height: calc(100vh - 100px);
+    max-width: 100vw;
     background-color: #000000;
     border-radius: 8px;
     justify-self: center;
+    object-fit: contain;
+    /* Prevent default touch actions for better mobile support */
+    touch-action: none;
+}
+
+button {
+    /* Prevent default touch actions for better mobile support */
+    touch-action: none;
+}
+
+.no-style-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
 }
 
 .pixel-image {

@@ -13,6 +13,9 @@
 </head>
 
 <body>
+    <header>
+        <a href="/"><img src="/static/powders-icon.png" alt="Powders Icon" id="game-icon"></a>
+    </header>
     <div style="display: none;" id="debug-info">
         <p id="dbg-mouse-pos">?,?</p>
         <p id="dbg-particle-info">No particle</p>
@@ -23,10 +26,67 @@
         <canvas id="game-canvas" class="game-canvas pixel-image canvas-aspect" width="75" height="56"></canvas>
     </div>
     <button id="start-button">Start Game</button>
-    <div id="tool-picker"><ul class="types-list category-types-list" id="tools-list"></ul></div>
+    <div id="tool-picker">
+        <ul id="mobile-controls" style="display: none;" class="no-style-list">
+            <li><button class="type-button" style="background-color: #ff0000;" id="mobile-c-t">Clear (Terrain)</button>
+            </li>
+            <li><button class="type-button" style="background-color: #ff0000;" id="mobile-c-nt">Clear (No
+                    Terrain)</button>
+            </li>
+            <li>
+                <label for="mobile-bs">Brush Size</label>
+                <input id="mobile-bs" type="range" id="brush-size-slider" step="1" min="1" max="11" value="1">
+            </li>
+            <li><button class="type-button" style="background-color: #000000; color: white;" id="mobile-dmt">Debug Mode
+                    Toggle</button></li>
+            <li>
+                <label for="mobile-it">Intensify Tool</label>
+                <input type="checkbox" id="mobile-it">
+            </li>
+            <li>
+                <label for="mobile-p">Paused</label>
+                <input type="checkbox" id="mobile-p">
+            </li>
+            <li><button class="type-button" style="background-color: #000000; color: white;"
+                    id="mobile-s">Settings</button></li>
+        </ul>
+        <ul class="types-list category-types-list" id="tools-list"></ul>
+    </div>
     <div id="element-picker">
         <ul class="types-list" id="categories-list"></ul>
         <div id="category-display"></div>
+    </div>
+    <div id="ui-panel" class="ui-panel">
+        <div id="settings-container" class="settings-container" style="display: none;">
+            <div class="settings-screen-background"></div>
+            <div class="settings-panel" id="settings-panel">
+                <button id="settings-close-button" class="exit-button"></button>
+                <h2>Settings</h2>
+                <label for="settings-disable-ai">Disable AI (Performance)</label>
+                <input type="checkbox" id="settings-disable-ai">
+            </div>
+        </div>
+    </div>
+    <div>
+        <h2>Controls</h2>
+        <h3>Desktop</h3>
+        <ul>
+            <li>Left Click: Use tool</li>
+            <li>Right Click: Use tool (alternative)</li>
+            <li>P: Pause/Unpause</li>
+            <li>D: Toggle debug menu (above game)</li>
+            <li>Minus (-): Decrease brush size</li>
+            <li>Equal (=): Increase brush size</li>
+            <li>C: Clear with terrain</li>
+            <li>Shift + C: Clear without terrain</li>
+            <li>Shift: Hold to intensify tool</li>
+            <li>S: Open settings</li>
+        </ul>
+        <h3>Mobile</h3>
+        <ul>
+            <li>Tap and hold: Use tool</li>
+            <li>All other controls are available through the mobile interface</li>
+        </ul>
     </div>
 </body>
 

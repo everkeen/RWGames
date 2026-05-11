@@ -364,7 +364,7 @@ class PowderTypes {
             list = document.createElement("ul");
             list.id = `category-list-${type.category}`;
             list.classList.add("types-list");
-            list.classList.add("category-type-list");
+            list.classList.add("category-types-list");
             list.style.display = "none"; // Start hidden until category is clicked
             list.style.flexWrap = "wrap";
             console.log(this.pickerElement);
@@ -634,6 +634,10 @@ export function colorCurve(points: { offset: number; color: string }[], position
     return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
+const hasTouchSupport = (): boolean => {
+    return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+};
+
 export class Powders {
     canvas: HTMLCanvasElement;
     ctx: CanvasRenderingContext2D;
@@ -648,16 +652,42 @@ export class Powders {
     selectedTool: string | null = null;
     tickRate: number = 20; // 20 ticks per second
     tmpGrid: Particle[][] | null = null; // Temporary grid for updates
-    paused: boolean = false;
+    private _paused: boolean = false;
     width: number = 75;
     height: number = 56;
     brushSize: number = 0; // 1 pixel
     intensifyBrush: boolean = false; // Intensification makes tools stronger.
     keysDown: Set<string> = new Set();
-    debugRenderShapesInput: HTMLInputElement
+    debugRenderShapesInput: HTMLInputElement;
     doDebugRender: boolean = false;
+    isMobile: boolean;
     disableAi: boolean = false; // Preformance option to disable AI
+    _noInput: boolean = false; // Disables inputs temporarily
     debugRenderShapes: { x: number; y: number; width: number; height: number; color: string; forTick: boolean }[] = [];
+
+    set noInput(value: boolean) {
+        this._noInput = value;
+        if (!value) {
+            this.lastMouseX = this.mouseX;
+            this.lastMouseY = this.mouseY;
+        }
+    }
+
+    get noInput(): boolean {
+        return this._noInput;
+    }
+
+    set paused(value: boolean) {
+        this._paused = value;
+        const pauseToggle = document.getElementById("mobile-p") as HTMLInputElement;
+        if (pauseToggle) {
+            pauseToggle.checked = value;
+        }
+    }
+
+    get paused(): boolean {
+        return this._paused;
+    }
 
     constructor() {
         console.log("Powders game initialized!");
@@ -672,7 +702,85 @@ export class Powders {
         this.debugRenderShapesInput.onchange = () => {
             this.doDebugRender = this.debugRenderShapesInput.checked;
         };
+        this.isMobile = hasTouchSupport();
+        if (this.isMobile) {
+            const mobileControls = document.getElementById("mobile-controls")!;
+            mobileControls.style.display = "block";
+            const clearTerrainBtn = document.getElementById("mobile-c-t")!;
+            clearTerrainBtn.onclick = () => {
+                this.reset(true);
+            };
+            const clearNoTerrainBtn = document.getElementById("mobile-c-nt")!;
+            clearNoTerrainBtn.onclick = () => {
+                this.reset(false);
+            };
+            const brushSizeSlider = document.getElementById("mobile-bs") as HTMLInputElement;
+            brushSizeSlider.oninput = () => {
+                this.brushSize = parseInt(brushSizeSlider.value, 10);
+            };
+            const debugModeToggle = document.getElementById("mobile-dmt") as HTMLInputElement;
+            debugModeToggle.onclick = () => {
+                this.toggleDebug();
+            };
+            const intensifyToggle = document.getElementById("mobile-it") as HTMLInputElement;
+            intensifyToggle.onchange = () => {
+                this.intensifyBrush = intensifyToggle.checked;
+            };
+            const pauseToggle = document.getElementById("mobile-p") as HTMLInputElement;
+            pauseToggle.onchange = () => {
+                this._paused = pauseToggle.checked; // Fixes some recursion issues.
+            };
+            const settingsToggle = document.getElementById("mobile-s") as HTMLButtonElement;
+            settingsToggle.onclick = () => {
+                this.toggleSettings();
+            };
+        }
+        this.initSettings();
         this.resize(this.canvas.width, this.canvas.height, false);
+    }
+    
+    public getSettingsDict(): { [key: string]: any } {
+        return {
+            disableAi: this.disableAi,
+        };
+    }
+
+    public getLocalStorageSettings(): { [key: string]: any } | undefined {
+        const settingsStr = localStorage.getItem("powdersSettings");
+        if (settingsStr) {
+            try {
+                return JSON.parse(settingsStr);
+            } catch (e) {
+                console.error("Failed to parse settings from localStorage:", e);
+                return undefined;
+            }
+        }
+        return undefined;
+    }
+
+    public saveSettings() {
+        const settings = this.getSettingsDict();
+        localStorage.setItem("powdersSettings", JSON.stringify(settings));
+    }
+
+    public initSettings() {
+        const settings = this.getLocalStorageSettings();
+        if (settings) {
+            if (typeof settings.disableAi === "boolean") {
+                this.disableAi = settings.disableAi;
+            }
+        }
+        // Initialize settings stuff
+        const disableAiCheckbox = document.getElementById("settings-disable-ai") as HTMLInputElement;
+        disableAiCheckbox.checked = this.disableAi;
+        disableAiCheckbox.onchange = () => {
+            this.disableAi = disableAiCheckbox.checked;
+            this.saveSettings();
+        };
+        const settingsCloseButton = document.getElementById("settings-close-button")!;
+        settingsCloseButton.onclick = () => {
+            this.toggleSettings();
+        };
     }
 
     public renderDebugSquare(x: number, y: number, width: number, height: number, color: string, forTick: boolean = true) {
@@ -753,34 +861,91 @@ export class Powders {
         this.spawnParticle(x, y, null, true);
     }
 
+    public toggleSettings() {
+        const settingsContainer = document.getElementById("settings-container")!;
+        if (settingsContainer.style.display === "none") {
+            settingsContainer.style.display = "block";
+            this.paused = true; // Pause game when entering settings
+            this.noInput = true; // Stop game from recieving input
+        } else {
+            settingsContainer.style.display = "none";
+            this.saveSettings(); // Save settings when exiting
+            setTimeout(() => {
+                this.noInput = false; // Re-enable input shortly after closing settings to prevent accidental clicks
+            }, 100);
+        }
+    }
+
     public listenInputs() {
-        document.addEventListener("mousedown", (e) => {
-            this.canvas.focus(); // Focus the canvas to receive keypress events
+        const mouseDown = (e: MouseEvent) => {
+            if (this.noInput) return;
             if (e.button === 0) {
                 this.mouseLeftDown = true;
             } else if (e.button === 2) {
                 this.mouseRightDown = true;
             }
-            const rect = this.canvas.getBoundingClientRect();
-            this.mouseX = Math.floor((e.clientX - rect.left) / (rect.width / this.canvas.width));
-            this.mouseY = Math.floor((e.clientY - rect.top) / (rect.height / this.canvas.height));
-        });
+            const coords = screenToCanvas(this.canvas, e.clientX, e.clientY);
+            this.mouseX = coords.x;
+            this.mouseY = coords.y;
+        }
+        document.addEventListener("mousedown", mouseDown);
         document.addEventListener("contextmenu", (e) => {
             e.preventDefault();
         });
-        document.addEventListener("mouseup", (e) => {
+        function screenToCanvas(canvas: HTMLCanvasElement, screenX: number, screenY: number): { x: number; y: number } {
+            const rect = canvas.getBoundingClientRect();
+            const rectWidth = rect.width;
+            const rectHeight = rect.height;
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+
+            // Calculate the aspect ratios
+            const rectAspect = rectWidth / rectHeight;
+            const canvasAspect = canvasWidth / canvasHeight;
+
+            let displayWidth = rectWidth;
+            let displayHeight = rectHeight;
+            let offsetX = 0;
+            let offsetY = 0;
+
+            // Adjust for aspect ratio mismatch
+            if (rectAspect > canvasAspect) {
+                // Canvas display is wider than canvas data
+                displayWidth = rectHeight * canvasAspect;
+                offsetX = (rectWidth - displayWidth) / 2;
+            } else if (rectAspect < canvasAspect) {
+                // Canvas display is taller than canvas data
+                displayHeight = rectWidth / canvasAspect;
+                offsetY = (rectHeight - displayHeight) / 2;
+            }
+
+            // Calculate the scale factors for each dimension
+            const scaleX = canvasWidth / displayWidth;
+            const scaleY = canvasHeight / displayHeight;
+
+            // Convert screen coordinates to canvas image data coordinates
+            const x = Math.floor((screenX - rect.left - offsetX) * scaleX);
+            const y = Math.floor((screenY - rect.top - offsetY) * scaleY);
+            return { x, y };
+        }
+        const mouseUp = (e: MouseEvent) => {
+            if (this.noInput) return;
             if (e.button === 0) {
                 this.mouseLeftDown = false;
             } else if (e.button === 2) {
                 this.mouseRightDown = false;
             }
-        });
-        document.addEventListener("mousemove", (e) => {
-            const rect = this.canvas.getBoundingClientRect();
-            this.mouseX = Math.floor((e.clientX - rect.left) / (rect.width / this.canvas.width));
-            this.mouseY = Math.floor((e.clientY - rect.top) / (rect.height / this.canvas.height));
-        });
-        document.addEventListener("keydown", (e) => {
+        }
+        document.addEventListener("mouseup", mouseUp);
+        const mouseMove = (e: MouseEvent) => {
+            if (this.noInput) return;
+            const coords = screenToCanvas(this.canvas, e.clientX, e.clientY);
+            this.mouseX = coords.x;
+            this.mouseY = coords.y;
+        }
+        document.addEventListener("mousemove", mouseMove);
+        const keyDown = (e: KeyboardEvent) => {
+            if (this.noInput) return;
             this.keysDown.add(e.key);
             switch (e.key) {
                 case "d":
@@ -809,14 +974,47 @@ export class Powders {
                 case "Shift":
                     this.intensifyBrush = true;
                     break;
+                case "s":
+                    this.toggleSettings();
+                    break;
             }
-        });
-        document.addEventListener("keyup", (e) => {
+        };
+        document.addEventListener("keydown", keyDown);
+        const keyUp = (e: KeyboardEvent) => {
             this.keysDown.delete(e.key);
             switch (e.key) {
                 case "Shift":
                     this.intensifyBrush = false;
                     break;
+            }
+        };
+        document.addEventListener("keyup", keyUp);
+        // Mobile inputs
+        document.addEventListener("touchstart", (e) => {
+            if (this.noInput) return;
+            this.canvas.focus();
+            const touch = e.touches[0]!;
+            const pos = screenToCanvas(this.canvas, touch.clientX, touch.clientY);
+            this.mouseX = pos.x;
+            this.mouseY = pos.y;
+            this.lastMouseX = this.mouseX;
+            this.lastMouseY = this.mouseY;
+            this.mouseLeftDown = true;
+        });
+        document.addEventListener("touchend", (e) => {
+            if (this.noInput) return;
+            this.mouseLeftDown = false;
+        });
+        document.addEventListener("touchmove", (e) => {
+            if (this.noInput) return;
+            const touch = e.touches[0]!;
+            const pos = screenToCanvas(this.canvas, touch.clientX, touch.clientY);
+            this.mouseX = pos.x;
+            this.mouseY = pos.y;
+        });
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) {
+                this.paused = true;
             }
         });
     }
@@ -3001,6 +3199,16 @@ toolTypes.register("crush", {
         }
     },
     onTick: true
+});
+// For mobile users
+toolTypes.register("erase", {
+    name: "Erase Tool",
+    color: "#FFFFFF",
+    action: (game, x, y) => {
+        if (!game.mouseLeftDown) return;
+        game.drawParticleLine(game.lastMouseX, game.lastMouseY, x, y, null, true, game.brushSize); // Draw with null type to erase particles
+    },
+    onTick: false
 });
 
 export default {
