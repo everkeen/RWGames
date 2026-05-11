@@ -83,6 +83,24 @@ header.mobile {
     display: none;
 }
 
+.warning {
+    background-color: #fff700;
+    color: #000;
+    border-radius: 8px;
+    width: fit-content;
+    text-align: center;
+    text-decoration: underline;
+    font-weight: bold;
+}
+
+.warning::marker {
+    color: #eee;
+}
+
+.warning * {
+    color: #000;
+}
+
 .game-canvas.mobile {
     width: 90%;
     max-width: 90vw;
