@@ -710,11 +710,15 @@ export class Powders {
     }
 
     constructor() {
-        console.log("Powders game initialized!");
         this.canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
         // Quick phone UI change on the canvas (For larger canvas)
+        console.log(`Window size: ${window.innerWidth}x${window.innerHeight}`);
         if (window.innerWidth < window.innerHeight && window.innerHeight >= 1000) { // More space for controls below, use larger canvas
             this.canvas.classList.add("mobile");
+        }
+        if (window.innerHeight < 720) { // Small screen, switch header to mobile version (hidden)
+            const header = document.querySelector("header")!;
+            header.classList.add("mobile");
         }
         const context = this.canvas.getContext("2d");
         if (!context) {
@@ -761,12 +765,13 @@ export class Powders {
         }
         this.initSettings();
         this.resize(this.canvas.width, this.canvas.height, false);
+        console.log("Powders game initialized!");
     }
 
     public mouseInBounds(): boolean {
         return this.mouseX >= 0 && this.mouseX < this.canvas.width && this.mouseY >= 0 && this.mouseY < this.canvas.height;
     }
-
+    
     public getSettingsDict(): { [key: string]: any } {
         return {
             disableAi: this.disableAi,
