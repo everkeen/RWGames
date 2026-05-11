@@ -6,7 +6,7 @@
   "scripts": {
     "predeploy": "npm run build",
     "dev": "npm run build && npm run dbgserve",
-    "deploy": "npm run predeploy && gh-pages -d dist",
+    "deploy": "npm run predeploy && gh-pages -d main",
     "dbgserve": "npx http-server main -p 8080 -c-1",
     "build": "tsc"
   },
