@@ -60,13 +60,26 @@
             <div id="category-display" style="clear: both;"></div>
         </div>
         <div id="ui-panel" class="ui-panel">
-            <div id="settings-container" class="settings-container" style="display: none;">
-                <div class="settings-screen-background"></div>
+            <div id="changelog-container" class="ui-container">
+                <div class="simple-ui-panel" id="changelog-panel">
+                    <button title="Exit" id="changelog-close-button" class="exit-button" data-close="changelog-container"></button>
+                    <h2>Changelog</h2>
+                    <div id="changelog-content">
+                        <h3>v1.0.0 Radiological Surprises</h3>
+                        <ul>
+                            <li>Added this changelog panel!</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div id="settings-container" class="ui-container" style="display: none;">
                 <div class="settings-panel" id="settings-panel">
-                    <button id="settings-close-button" class="exit-button"></button>
+                    <button title="Exit" id="settings-close-button" class="exit-button"></button>
                     <h2>Settings</h2>
                     <label for="settings-disable-ai">Disable AI (Performance)</label>
                     <input type="checkbox" id="settings-disable-ai">
+                    <label for="settings-no-special-graphics">No special graphics (Performance)</label>
+                    <input type="checkbox" id="settings-no-special-graphics">
                 </div>
             </div>
         </div>

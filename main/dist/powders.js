@@ -549,19 +549,62 @@ export function energyBehavior(game, particle) {
         game.swapParticles(particle.x, particle.y, newX, newY);
     }
     else {
-        // Find new bounce direction based on the particle it hit
-        const bouncedParticle = game.getParticle(newX, newY);
-        if (bouncedParticle && bouncedParticle.directionX !== 0 && bouncedParticle.directionY !== 0) {
-            // Use the direction of the particle we bounced on
-            particle.directionX = -bouncedParticle.directionX;
-            particle.directionY = -bouncedParticle.directionY;
+        // Calculate surface normal by checking which direction is blocked
+        let normalX = 0;
+        let normalY = 0;
+        // Determine the normal of the surface hit
+        const blockedX = !game.isFree(particle.x + particle.directionX, particle.y);
+        const blockedY = !game.isFree(particle.x, particle.y + particle.directionY);
+        // Set normal based on which axis is blocked
+        if (blockedX)
+            normalX = -Math.sign(particle.directionX);
+        if (blockedY)
+            normalY = -Math.sign(particle.directionY);
+        // If we couldn't determine normal, fallback to simple reversal
+        if (normalX === 0 && normalY === 0) {
+            normalX = -Math.sign(particle.directionX) || 0;
+            normalY = -Math.sign(particle.directionY) || 0;
+        }
+        // Reflect velocity: r = d - 2(d·n)n
+        const dotProduct = particle.directionX * normalX + particle.directionY * normalY;
+        particle.directionX = particle.directionX - 2 * dotProduct * normalX;
+        particle.directionY = particle.directionY - 2 * dotProduct * normalY;
+        // // Add slight randomness for realistic material variation
+        // particle.directionX += (Math.random() - 0.5) * 0.2;
+        // particle.directionY += (Math.random() - 0.5) * 0.2;
+        // Ensure we have a valid direction after bounce to prevent freezing
+        if (Math.abs(particle.directionX) < 0.1 && Math.abs(particle.directionY) < 0.1) {
+            particle.directionX = n101random(false);
+            particle.directionY = n101random(false);
+        }
+        // Try to move in reflected direction, with fallback to adjacent directions
+        let moveFound = false;
+        const checkX = particle.x + particle.directionX;
+        const checkY = particle.y + particle.directionY;
+        if (game.isFree(checkX, checkY)) {
+            moveFound = true;
         }
         else {
-            // Calculate reflection direction from energy particle to bounced particle
-            const dirX = newX - particle.x;
-            const dirY = newY - particle.y;
-            particle.directionX = -dirX;
-            particle.directionY = -dirY;
+            // Try all 8 directions to find an escape route
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    if (dx === 0 && dy === 0)
+                        continue;
+                    if (game.isFree(particle.x + dx, particle.y + dy)) {
+                        particle.directionX = dx;
+                        particle.directionY = dy;
+                        moveFound = true;
+                        break;
+                    }
+                }
+                if (moveFound)
+                    break;
+            }
+        }
+        // If still stuck, pick a random direction to escape
+        if (!moveFound) {
+            particle.directionX = n101random(false);
+            particle.directionY = n101random(false);
         }
     }
 }
@@ -632,7 +675,8 @@ export class Powders {
     debugRenderShapesInput;
     doDebugRender = false;
     isMobile;
-    disableAi = false; // Preformance option to disable AI
+    disableAi = false; // Performance option to disable AI
+    noSpecialGraphics = false; // Performance option to disable special graphics (like glow)
     _noInput = false; // Disables inputs temporarily
     debugRenderShapes = [];
     set noInput(value) {
@@ -710,8 +754,57 @@ export class Powders {
             };
         }
         this.initSettings();
+        this.initHtml();
         this.resize(this.canvas.width, this.canvas.height, false);
         console.log("Powders game initialized!");
+    }
+    initHtml() {
+        const uiCloseBtns = document.querySelectorAll("button[data-close]");
+        uiCloseBtns.forEach((btn) => {
+            const button = btn;
+            const targetId = button.getAttribute("data-close");
+            button.onclick = () => {
+                this.closeUi(targetId);
+            };
+        });
+    }
+    closeUi(id) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.style.display = "none";
+        }
+    }
+    openUi(id) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.style.display = "block";
+        }
+    }
+    fixParticleErrors(particle) {
+        // Fixes any "errors" with the particle
+        // Ex:
+        // - Direction not being normalized from -1 to 1
+        if (particle.directionX < -1)
+            particle.directionX = -1;
+        if (particle.directionX > 1)
+            particle.directionX = 1;
+        if (particle.directionY < -1)
+            particle.directionY = -1;
+        if (particle.directionY > 1)
+            particle.directionY = 1;
+        particle.directionX = Math.round(particle.directionX);
+        particle.directionY = Math.round(particle.directionY);
+    }
+    toggleUi(id) {
+        const element = document.getElementById(id);
+        if (element) {
+            if (element.style.display === "block") {
+                element.style.display = "none";
+            }
+            else {
+                element.style.display = "block";
+            }
+        }
     }
     mouseInBounds() {
         return this.mouseX >= 0 && this.mouseX < this.canvas.width && this.mouseY >= 0 && this.mouseY < this.canvas.height;
@@ -719,6 +812,7 @@ export class Powders {
     getSettingsDict() {
         return {
             disableAi: this.disableAi,
+            noSpecialGraphics: this.noSpecialGraphics,
         };
     }
     getLocalStorageSettings() {
@@ -744,12 +838,21 @@ export class Powders {
             if (typeof settings.disableAi === "boolean") {
                 this.disableAi = settings.disableAi;
             }
+            if (typeof settings.noSpecialGraphics === "boolean") {
+                this.noSpecialGraphics = settings.noSpecialGraphics;
+            }
         }
         // Initialize settings stuff
         const disableAiCheckbox = document.getElementById("settings-disable-ai");
         disableAiCheckbox.checked = this.disableAi;
         disableAiCheckbox.onchange = () => {
             this.disableAi = disableAiCheckbox.checked;
+            this.saveSettings();
+        };
+        const noSpecialGraphicsCheckbox = document.getElementById("settings-no-special-graphics");
+        noSpecialGraphicsCheckbox.checked = this.noSpecialGraphics;
+        noSpecialGraphicsCheckbox.onchange = () => {
+            this.noSpecialGraphics = noSpecialGraphicsCheckbox.checked;
             this.saveSettings();
         };
         const settingsCloseButton = document.getElementById("settings-close-button");
@@ -796,6 +899,26 @@ export class Powders {
         return single ? types[0] : types;
     }
     isFree(x, y) {
+        // Make sure nothing is undefined
+        if (this.grid[y] === undefined) {
+            return false; // If the row doesn't exist, it's not free (Out of bounds)
+        }
+        if (this.grid[y][x] === undefined) {
+            return false; // If the cell doesn't exist, it's not free (Out of bounds)
+        }
+        // Individual out-of-bounds checks
+        if (y < 0 || x < 0) {
+            return false; // Negative coordinates are out of bounds
+        }
+        if (y >= this.grid.length) {
+            return false; // Y coordinate is out of bounds
+        }
+        if (x >= this.grid[y].length) {
+            return false; // X coordinate is out of bounds
+        }
+        if (y < 0 || y >= this.grid.length || x < 0 || x >= this.grid[y].length) {
+            return false; // Out of bounds is not free
+        }
         return (y >= 0 &&
             y < this.grid.length &&
             x >= 0 &&
@@ -834,6 +957,12 @@ export class Powders {
         const settingsContainer = document.getElementById("settings-container");
         if (settingsContainer.style.display === "none") {
             settingsContainer.style.display = "block";
+            const noSpecialGraphicsCheckbox = document.getElementById("settings-no-special-graphics");
+            noSpecialGraphicsCheckbox.checked = this.noSpecialGraphics;
+            noSpecialGraphicsCheckbox.onchange = () => {
+                this.noSpecialGraphics = noSpecialGraphicsCheckbox.checked;
+                this.saveSettings();
+            };
             this.paused = true; // Pause game when entering settings
             this.noInput = true; // Stop game from recieving input
         }
@@ -1262,6 +1391,7 @@ export class Powders {
                             particle.onFire = false; // If not flammable, stop being on fire
                         }
                     }
+                    this.fixParticleErrors(particle);
                 }
             }
         }
@@ -1381,14 +1511,16 @@ export class Powders {
                 } // Skip draw otherwise for better performance
             }
         }
-        for (const glow of glows) {
-            this.ctx.fillStyle = glow.color;
-            this.ctx.globalAlpha = 0.5;
-            this.ctx.fillRect(glow.x - 1, glow.y, 1, 1);
-            this.ctx.fillRect(glow.x + 1, glow.y, 1, 1);
-            this.ctx.fillRect(glow.x, glow.y - 1, 1, 1);
-            this.ctx.fillRect(glow.x, glow.y + 1, 1, 1);
-            this.ctx.globalAlpha = 1.0;
+        if (!this.noSpecialGraphics) {
+            for (const glow of glows) {
+                this.ctx.fillStyle = glow.color;
+                this.ctx.globalAlpha = 0.5;
+                this.ctx.fillRect(glow.x - 1, glow.y, 1, 1);
+                this.ctx.fillRect(glow.x + 1, glow.y, 1, 1);
+                this.ctx.fillRect(glow.x, glow.y - 1, 1, 1);
+                this.ctx.fillRect(glow.x, glow.y + 1, 1, 1);
+                this.ctx.globalAlpha = 1.0;
+            }
         }
         // Debug info
         const mouseParticle = this.getParticle(this.mouseX, this.mouseY);
@@ -1570,12 +1702,21 @@ export class Powders {
                             this.spawnParticle(falloutX, falloutY, "fallout", true);
                         }
                     }
-                    // Spawn radiation or plasma (biased to radiation) with 1% chance in free space for nuclear explosions
+                    // Spawn radiation, plasma, or a neutron (biased to radiation) with 1% chance in free space for nuclear explosions
                     if (nuclear && Math.random() < 0.01) {
                         const radiationX = Math.floor(x + rayX * (radius + 5 + n101random()));
                         const radiationY = Math.floor(y + rayY * (radius + 5 + n101random()));
                         if (this.isFree(radiationX, radiationY)) {
-                            this.spawnParticle(radiationX, radiationY, Math.random() < 0.75 ? "radiation" : "plasma", true);
+                            const random = Math.random();
+                            if (random < 0.75) {
+                                this.spawnParticle(radiationX, radiationY, "radiation", true);
+                            }
+                            else if (random < 0.875) {
+                                this.spawnParticle(radiationX, radiationY, "plasma", true);
+                            }
+                            else { // Neutron particles added in 1.0.0.
+                                this.spawnParticle(radiationX, radiationY, "neutron", true);
+                            }
                         }
                     }
                 }
@@ -3079,7 +3220,68 @@ powderTypes.register("radioactive_dust", {
     explosionResistance: 0.0 // Same thing as dust.
 });
 powderTypes.addToTag("radioactive_dust", "ai_danger");
-// Vanilla tools
+// Version 1.0.0 additions
+powderTypes.register("neutron", {
+    name: "Neutron",
+    color: "#00ffff",
+    colorVariation: 0.1,
+    behavior: (game, particle) => {
+        energyBehavior(game, particle);
+    },
+    defaultTemp: 0,
+    tempTransferRate: 0,
+    state: "energy",
+    category: "Radioactive",
+    weight: -1, // Energy has no weight.
+    explosionResistance: 0.0, // You are gonna die to the neutron before the explosion 🥀
+    reactions: [
+        {
+            with: "proton",
+            result: "hydrogen",
+            chance: 0.05 // When a neutron reacts with a proton, it has a small chance to create hydrogen
+        }
+    ]
+});
+powderTypes.addToTag("neutron", "ai_kill");
+powderTypes.register("proton", {
+    name: "Proton",
+    color: "#ff0000",
+    colorVariation: 0.1,
+    behavior: (game, particle) => {
+        energyBehavior(game, particle);
+    },
+    defaultTemp: 0,
+    tempTransferRate: 0,
+    state: "energy",
+    category: "Radioactive",
+    weight: -1, // Energy has no weight.
+    explosionResistance: 0.0 // You are gonna die to the proton before the explosion 🥀
+});
+powderTypes.addToTag("proton", "ai_kill");
+powderTypes.register("hydrogen", {
+    name: "Hydrogen",
+    color: "#598cb7",
+    colorVariation: 0.1,
+    behavior: gasBehavior, // Hydrogen gas, lighter than air and can react with oxygen to create water
+    defaultTemp: 0,
+    tempTransferRate: 0,
+    state: "gas",
+    category: "Gases",
+    weight: -0.4, // Lightest known gas, so it is VERY light
+    explosionResistance: 0.0, // Literally flammable gas
+    reactions: [
+        {
+            with: "oxygen",
+            result: "water",
+            chance: 0.02 // When hydrogen reacts with oxygen, it has a chance to create water to represent the chemical reaction of hydrogen combusting in oxygen to create water
+        }
+    ],
+    flammability: 1.0, // Extremely flammable, can ignite and cause explosions when in contact with fire or sparks
+    gasGravity: true, // Rises
+    gasWeight: 0.4, // Rises with a 40% chance each tick
+    reverseGravity: true,
+});
+// Vanilla tools (From version BETA)
 toolTypes.register("heat", {
     name: "Heat Tool",
     color: "#ff0000",

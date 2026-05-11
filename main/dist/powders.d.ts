@@ -134,6 +134,7 @@ export declare class Powders {
     doDebugRender: boolean;
     isMobile: boolean;
     disableAi: boolean;
+    noSpecialGraphics: boolean;
     _noInput: boolean;
     debugRenderShapes: {
         x: number;
@@ -148,6 +149,11 @@ export declare class Powders {
     set paused(value: boolean);
     get paused(): boolean;
     constructor();
+    initHtml(): void;
+    closeUi(id: string): void;
+    openUi(id: string): void;
+    fixParticleErrors(particle: Particle): void;
+    toggleUi(id: string): void;
     mouseInBounds(): boolean;
     getSettingsDict(): {
         [key: string]: any;
