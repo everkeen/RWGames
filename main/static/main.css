@@ -12,6 +12,10 @@ body {
     color: #eee;
 }
 
+body * {
+    color: inherit;
+}
+
 .game-canvas-container {
     display: flex;
     justify-content: center;

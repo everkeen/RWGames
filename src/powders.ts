@@ -193,6 +193,9 @@ class ToolTypes {
         const content = document.createElement("button");
         content.textContent = tool.name;
         content.style.backgroundColor = tool.color;
+        if (tool.color === "#ffffff") {
+            content.style.color = "#000000"; // Switch to black text for white tools for visibility
+        }
         content.classList.add("type-button");
         content.onclick = () => {
             const game = getGame()!;
