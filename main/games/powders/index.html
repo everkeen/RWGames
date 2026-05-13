@@ -7,14 +7,18 @@
     <link rel="stylesheet" href="../../static/main.css">
     <script type="module">
         import powders from '../../dist/powders.js';
+        window.powders = powders;
         document.getElementById('start-button').addEventListener('click', () => powders.startGame());
     </script>
+    <script type="module" src="../../dist/main.js"></script>
     <link rel="stylesheet" href="../../static/powders.css">
+    <link rel="icon" type="image/png" href="../../static/powdersicon.png">
 </head>
 
 <body>
     <header>
-        <a href="../../"><img src="../../static/powders-icon.png" alt="Powders Icon" id="game-icon"></a>
+        <a href="../../"><img src="../../static/rwglogo.png" alt="RWG Logo" class="pixel-image rwg-logo"
+                id="game-icon"></a>
     </header>
     <main>
         <div style="display: none;" id="debug-info">
@@ -22,6 +26,8 @@
             <p id="dbg-particle-info">No particle</p>
             <label for="debug-render-shapes">Debug Rendering</label>
             <input type="checkbox" id="debug-render-shapes">
+            <!--Warnings for debugging (ex: backup renderer used)-->
+            <p class="warning" id="debug-warnings">All good!</p>
         </div>
         <div id="game-container" class="game-canvas-container">
             <canvas id="game-canvas" class="game-canvas pixel-image canvas-aspect" width="75" height="56"></canvas>
@@ -62,25 +68,69 @@
         <div id="ui-panel" class="ui-panel">
             <div id="changelog-container" class="ui-container">
                 <div class="simple-ui-panel" id="changelog-panel">
-                    <button title="Exit" id="changelog-close-button" class="exit-button" data-close="changelog-container"></button>
+                    <button title="Exit" id="changelog-close-button" class="exit-button"
+                        data-close="changelog-container"></button>
                     <h2>Changelog</h2>
                     <div id="changelog-content">
                         <h3>v1.0.0 Indev: Radiological Surprises</h3>
                         <ul>
                             <li>Added this changelog panel!</li>
-                            <li class="warning"><p>Warning: This version is in development and may contain bugs.</p></li>
+                            <li>Fully overhauled game renderer for better performance with WebGL.</li>
+                            <li>Added 1 new tool: Randomize Tool, Places random particles within the brush</li>
+                            <li class="warning">
+                                <p>Warning: This version is in development and may contain bugs.</p>
+                            </li>
                         </ul>
                     </div>
                 </div>
             </div>
             <div id="settings-container" class="ui-container" style="display: none;">
-                <div class="settings-panel" id="settings-panel">
+                <div class="simple-ui-panel" id="settings-panel">
                     <button title="Exit" id="settings-close-button" class="exit-button"></button>
                     <h2>Settings</h2>
                     <label for="settings-disable-ai">Disable AI (Performance)</label>
                     <input type="checkbox" id="settings-disable-ai">
+                    <p class="quiet">Disables creature AI to improve performance; also removes survival stats.</p>
                     <label for="settings-no-special-graphics">No special graphics (Performance)</label>
                     <input type="checkbox" id="settings-no-special-graphics">
+                    <p class="quiet">Disables special graphics like glow effects to improve performance.</p>
+                    <label for="settings-high-quality-explode">High Quality Explosions</label>
+                    <input type="checkbox" id="settings-high-quality-explode">
+                    <p class="quiet">Makes explosions use 64 rays instead of 32 for a smoother appearance, at the cost
+                        of performance.</p>
+                    <label for="settings-particle-limit">Particle Limit</label>
+                    <select id="settings-particle-limit">
+                        <option value="disabled">Disable</option>
+                        <option value="100">100</option>
+                        <option value="500">500</option>
+                        <option value="1000" selected>1000</option>
+                        <option value="2000">2000</option>
+                        <option value="5000">5000</option>
+                        <option value="10000">10000</option>
+                        <option value="unlimited">Unlimited</option>
+                    </select>
+                    <p class="quiet">Limits the number of particles that can exist at once to improve performance. If
+                        the limit is
+                        reached, new particles will not spawn until some existing ones despawn.</p>
+                    <p class="warning">Warning: Setting the particle limit too high may cause performance issues or
+                        crashes on some devices.</p>
+                    <label for="settings-renderer">Renderer</label>
+                    <select id="settings-renderer">
+                        <option value="gpu">WebGL/GPU</option>
+                        <option value="cpu">Original/CPU</option>
+                        <option value="auto" selected>Default/Auto</option>
+                    </select>
+                    <p class="quiet">Forces the game to use a specific renderer type. By default, the game will choose
+                        the best available
+                        renderer for the user's device.</p>
+                    <p class="warning">The WebGL renderer may not work on all devices and browsers;
+                        as WebGL2 is required, some users may experience graphical glitches or reduced performance. The
+                        old renderer is less performant and may not support all features, but should work on a wider
+                        range of devices.</p>
+                    </p>
+                    <label for="settings-optimize-special-effects">Optimize Special Effects</label>
+                    <input type="checkbox" id="settings-optimize-special-effects">
+                    <p class="quiet">Optimizes special effects like glow and particle effects for better performance; Game may look less visually appealing.</p>
                 </div>
             </div>
         </div>
@@ -108,7 +158,8 @@
     </main>
     <footer>
         <p>Report an issue! <a href="https://github.com/everkeen/RWGames/issues">GitHub Issues</a></p>
-        <a href="../../"><img src="../../static/powders-icon.png" alt="Powders Icon" id="footer-game-icon"></a>
+        <a href="../../"><img src="../../static/rwglogo.png" alt="RWG Logo" class="pixel-image rwg-logo"
+                id="footer-game-icon"></a>
     </footer>
 </body>
 

@@ -11,9 +11,15 @@ export declare class Particle {
     bvs3: number;
     bvs4: number;
     bvs5: number;
+    any1: any;
+    any2: any;
+    any3: any;
+    any4: any;
+    any5: any;
     life: number;
     onFire: boolean;
     constructor(x: number, y: number, type: string | null, directionX?: number, directionY?: number);
+    getColor(): string;
     generateColorVariation(): string;
     lightOnFire(): void;
 }
@@ -37,6 +43,7 @@ interface PowderType {
     gasWeight?: number;
     defaultTemp?: number;
     tempTransferRate?: number;
+    noTransfer?: boolean;
     luminosity?: boolean;
     state: "solid" | "liquid" | "gas" | "energy" | "powder";
     cliffable?: boolean;
@@ -104,15 +111,64 @@ export declare function liquidBehavior(game: Powders, particle: Particle): void;
 export declare function gasBehavior(game: Powders, particle: Particle): void;
 export declare function cloudBehavior(game: Powders, particle: Particle): void;
 export declare function solidBehavior(game: Powders, particle: Particle): void;
-export declare function energyBehavior(game: Powders, particle: Particle): void;
+export declare function energyBehavior(game: Powders, particle: Particle, onBounce?: (game: Powders, particle: Particle, bouncedOn: Particle | null) => void): void;
 export declare function staticEnergyBehavior(game: Powders, particle: Particle): void;
 export declare function colorCurve(points: {
     offset: number;
     color: string;
 }[], position: number): string;
+export interface RaycastConfig {
+}
+export declare abstract class Renderer {
+    abstract init(game: Powders): void;
+    abstract destroy(): void;
+    abstract renderGrid(game: Powders): void;
+    abstract renderParticles(game: Powders): void;
+    abstract renderDebug(game: Powders): void;
+    abstract renderPost(game: Powders): void;
+    abstract get isGPU(): boolean;
+    abstract get supportsSpecialGraphics(): boolean;
+    abstract get supportsParticles(): boolean;
+}
+export declare class CPURenderer extends Renderer {
+    ctx: CanvasRenderingContext2D | null;
+    init(game: Powders): void;
+    destroy(): void;
+    renderGrid(game: Powders): void;
+    renderParticles(game: Powders): void;
+    renderDebug(game: Powders): void;
+    renderPost(game: Powders): void;
+    get isGPU(): boolean;
+    get supportsSpecialGraphics(): boolean;
+    get supportsParticles(): boolean;
+}
+export declare class GPURenderer extends Renderer {
+    ctx: WebGL2RenderingContext | null;
+    particleShaderProgram: WebGLProgram | null;
+    gridShaderProgram: WebGLProgram | null;
+    brushPreviewProgram: WebGLProgram | null;
+    framebuffer: WebGLFramebuffer | null;
+    cellWidth: number;
+    cellHeight: number;
+    init(game: Powders): void;
+    private shaderInit;
+    private createParticleShaderProgram;
+    private createGridShaderProgram;
+    private createShaderProgram;
+    private compileShader;
+    destroy(): void;
+    renderGrid(game: Powders): void;
+    renderParticles(game: Powders): void;
+    renderDebug(game: Powders): void;
+    renderPost(game: Powders): void;
+    get isGPU(): boolean;
+    get supportsSpecialGraphics(): boolean;
+    get supportsParticles(): boolean;
+}
 export declare class Powders {
     canvas: HTMLCanvasElement;
-    ctx: CanvasRenderingContext2D;
+    renderer: Renderer;
+    rendererOption: string;
     grid: Particle[][];
     mouseX: number;
     mouseY: number;
@@ -133,9 +189,19 @@ export declare class Powders {
     debugRenderShapesInput: HTMLInputElement;
     doDebugRender: boolean;
     isMobile: boolean;
+    particleLimit: number | null;
+    particlesEnabled: boolean;
+    particles: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        color: string;
+    }[];
     disableAi: boolean;
     noSpecialGraphics: boolean;
     _noInput: boolean;
+    highQualityExplode: boolean;
     debugRenderShapes: {
         x: number;
         y: number;
@@ -148,7 +214,10 @@ export declare class Powders {
     get noInput(): boolean;
     set paused(value: boolean);
     get paused(): boolean;
-    constructor();
+    constructor(renderer?: Renderer);
+    private doAutoRenderer;
+    selectorMatch(selector: string, particle: Particle): boolean;
+    parseSelector(selector: string): (string | null)[];
     initHtml(): void;
     closeUi(id: string): void;
     openUi(id: string): void;
@@ -163,16 +232,17 @@ export declare class Powders {
     } | undefined;
     saveSettings(): void;
     initSettings(): void;
+    getSetting(key: string, fromLocal?: boolean): any;
     renderDebugSquare(x: number, y: number, width: number, height: number, color: string, forTick?: boolean): void;
     processTypeId(typeId: string | null, original?: string | null, placeholderIndex?: Map<string, string | null>, single?: boolean): (string | null)[] | (string | null);
     isFree(x: number, y: number): boolean;
-    canSwap(type: string | null, x: number, y: number): boolean;
-    spawnParticle(x: number, y: number, type: string | null, replace?: boolean): void;
-    removeParticle(x: number, y: number): void;
+    canSwap(type: string | null, x: number, y: number, sameTypeSwap?: boolean): boolean;
+    spawnParticle(x: number, y: number, type: string | null, replace?: boolean, forceMainGrid?: boolean): Particle | undefined;
+    removeParticle(x: number, y: number, forceMainGrid?: boolean): void;
     toggleSettings(): void;
     listenInputs(): void;
-    drawParticleRect(x: number, y: number, width: number, height: number, type: string | null, replace?: boolean): void;
-    drawParticleLine(x1: number, y1: number, x2: number, y2: number, type: string | null, replace?: boolean, width?: number): void;
+    drawParticleRect(x: number, y: number, width: number, height: number, type: string | null, replace?: boolean): Particle[];
+    drawParticleLine(x1: number, y1: number, x2: number, y2: number, type: string | null, replace?: boolean, width?: number): Particle[];
     getAdjacentParticles(x: number, y: number): Particle[];
     getAdjacentOfType(x: number, y: number, type: string): Particle | null;
     swapParticles(x1: number, y1: number, x2: number, y2: number): void;
@@ -186,6 +256,11 @@ export declare class Powders {
     mouseDraw(): void;
     getParticlesInCircle(centerX: number, centerY: number, radius: number): Particle[];
     getParticlesInSquare(x: number, y: number, width: number, height: number): Particle[];
+    backupRenderGrid(): void;
+    backupRenderDebug(): void;
+    backupRenderParticles(): void;
+    backupRenderPost(): void;
+    convertCssToHex(cssColor: string): string;
     render(): void;
     getParticle(x: number, y: number): Particle | null;
     startGame(): void;
@@ -195,7 +270,11 @@ export declare class Powders {
     crushParticle(x: number, y: number): void;
     generateSimpleTerrain(): void;
     getParticlesInLine(x1: number, y1: number, x2: number, y2: number): Particle[];
-    explode(x: number, y: number, radius: number, force: number, lightFire?: boolean, nuclear?: boolean): void;
+    explode(x: number, y: number, radius: number, force: number, lightFire?: boolean, nuclear?: boolean): {
+        x: number;
+        y: number;
+        particle: Particle | null;
+    }[];
 }
 export declare function initPowders(): void;
 export declare const powderTypes: PowderTypes;

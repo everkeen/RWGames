@@ -40,6 +40,7 @@
     flex-wrap: wrap;
 }
 
+/* Outdated, use .simple-ui-panel instead
 .settings-panel {
     display: flex;
     flex-direction: column;
@@ -53,7 +54,7 @@
     transform: translate(-50%, -50%);
     padding: 20px;
     position: fixed;
-}
+} */
 
 .simple-ui-panel {
     display: flex;
@@ -67,7 +68,10 @@
     border-radius: 8px;
     transform: translate(-50%, -50%);
     padding: 20px;
-    position: fixed;
+    position: relative;
+    max-width: 90%;
+    max-height: 90%;
+    overflow-y: auto;
 }
 
 .ui-container {

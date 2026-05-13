@@ -11,6 +11,11 @@ export class Particle {
     bvs3: number = 0; // Shared Behavior Value 3, not affected by game, only behaviors
     bvs4: number = 0; // Shared Behavior Value 4, not affected by game, only behaviors
     bvs5: number = 0; // Shared Behavior Value 5, not affected by game, only behaviors
+    any1: any = null; // Shared Any Value 1, can hold any type of data, not affected by game, only behaviors
+    any2: any = null; // Shared Any Value 2, can hold any type of data, not affected by game, only behaviors
+    any3: any = null; // Shared Any Value 3, can hold any type of data, not affected by game, only behaviors
+    any4: any = null; // Shared Any Value 4, can hold any type of data, not affected by game, only behaviors
+    any5: any = null; // Shared Any Value 5, can hold any type of data, not affected by game, only behaviors
     life: number = 0; // For aging particles, not affected by game, only behaviors
     onFire: boolean = false; // Whether this particle is currently on fire or not
 
@@ -34,6 +39,10 @@ export class Particle {
                 this.deco = this.generateColorVariation();
             }
         }
+    }
+
+    public getColor(): string {
+        return this.deco ?? powderTypes.require(this.type!).color;
     }
 
     public generateColorVariation(): string {
@@ -94,6 +103,7 @@ interface PowderType {
     gasWeight?: number; // For gasses, how much they are affected by gravity if enabled (0-1)
     defaultTemp?: number; // Default temperature for the powder, used in interactions
     tempTransferRate?: number; // How quickly the particle transfers heat to adjacent particles, default is 0.1 (10% per tick)
+    noTransfer?: boolean; // Disables temperature transfer (both ways), Default false
     luminosity?: boolean; // Whether the particle "glows" or not.
     state: "solid" | "liquid" | "gas" | "energy" | "powder"; // For categorization, not used in behavior but can be used for interactions or future features.
     cliffable?: boolean; // Whether the particle can be used by platforming particles as a stable surface or not.
@@ -268,7 +278,7 @@ class PowderTypes {
         this.registry = new Map();
         this.listElement = document.getElementById("categories-list") as HTMLUListElement;
         this.pickerElement = document.getElementById("category-display") as HTMLDivElement;
-        this.tags.set("all", new Set());
+        this.registerTag("any"); // Every type is tagged with "any" for easy access to all types.
     }
 
     public addToTag(id: string, tag: string, strict: boolean = false) {
@@ -352,7 +362,7 @@ class PowderTypes {
         const newCategory = type.category && !this.categories.has(type.category);
         this.registry.set(id, type);
         this.list.push(id);
-        this.tags.get("all")!.add(id);
+        this.addToTag(id, "any");
         let list: HTMLUListElement;
         if (newCategory) {
             const categoryElement = document.createElement("div");
@@ -583,7 +593,7 @@ export function solidBehavior(game: Powders, particle: Particle) {
     // Dont do anything :)
 }
 
-export function energyBehavior(game: Powders, particle: Particle) {
+export function energyBehavior(game: Powders, particle: Particle, onBounce?: (game: Powders, particle: Particle, bouncedOn: Particle | null) => void) {
     // If no direction, pick a random one
     if (particle.directionX < 1 && particle.directionY < 1 && particle.directionX > -1 && particle.directionY > -1) {
         particle.directionX = n101random(false);
@@ -592,16 +602,17 @@ export function energyBehavior(game: Powders, particle: Particle) {
     // Move in the direction of energy
     const newX = particle.x + particle.directionX;
     const newY = particle.y + particle.directionY;
-    if (game.isFree(newX, newY)) {
+    if (game.canSwap(particle.type, newX, newY, true)) {
         game.swapParticles(particle.x, particle.y, newX, newY);
     } else {
         // Calculate surface normal by checking which direction is blocked
         let normalX = 0;
         let normalY = 0;
+        const bouncedOn = game.getParticle(newX, newY);
 
         // Determine the normal of the surface hit
-        const blockedX = !game.isFree(particle.x + particle.directionX, particle.y);
-        const blockedY = !game.isFree(particle.x, particle.y + particle.directionY);
+        const blockedX = !game.canSwap(particle.type, particle.x + particle.directionX, particle.y, true);
+        const blockedY = !game.canSwap(particle.type, particle.x, particle.y + particle.directionY, true);
 
         // Set normal based on which axis is blocked
         if (blockedX) normalX = -Math.sign(particle.directionX);
@@ -632,14 +643,14 @@ export function energyBehavior(game: Powders, particle: Particle) {
         let moveFound = false;
         const checkX = particle.x + particle.directionX;
         const checkY = particle.y + particle.directionY;
-        if (game.isFree(checkX, checkY)) {
+        if (game.canSwap(particle.type, checkX, checkY, true)) {
             moveFound = true;
         } else {
             // Try all 8 directions to find an escape route
             for (let dx = -1; dx <= 1; dx++) {
                 for (let dy = -1; dy <= 1; dy++) {
                     if (dx === 0 && dy === 0) continue;
-                    if (game.isFree(particle.x + dx, particle.y + dy)) {
+                    if (game.canSwap(particle.type, particle.x + dx, particle.y + dy, true)) {
                         particle.directionX = dx;
                         particle.directionY = dy;
                         moveFound = true;
@@ -652,8 +663,25 @@ export function energyBehavior(game: Powders, particle: Particle) {
 
         // If still stuck, pick a random direction to escape
         if (!moveFound) {
-            particle.directionX = n101random(false);
-            particle.directionY = n101random(false);
+            // Keep trying random directions until we find one that works
+            for (let attempt = 0; attempt < 10; attempt++) {
+                particle.directionX = n101random(false);
+                particle.directionY = n101random(false);
+                if (game.canSwap(particle.type, particle.x + particle.directionX, particle.y + particle.directionY, true)) {
+                    game.swapParticles(particle.x, particle.y, particle.x + particle.directionX, particle.y + particle.directionY);
+                    moveFound = true;
+                    break;
+                }
+            }
+            // If still no move found, stay in place but ensure direction is not zero
+            if (!moveFound && Math.abs(particle.directionX) < 0.01 && Math.abs(particle.directionY) < 0.01) {
+                particle.directionX = n101random(false) || 1.0;
+                particle.directionY = n101random(false) || 1.0;
+            }
+        } else {
+            if (onBounce) {
+                onBounce(game, particle, bouncedOn);
+            }
         }
     }
 }
@@ -665,14 +693,23 @@ export function staticEnergyBehavior(game: Powders, particle: Particle) {
         const directionY = n101random(false);
         const newX = particle.x + directionX;
         const newY = particle.y + directionY;
-        if (game.isFree(newX, newY)) {
+        if (game.canSwap(particle.type, newX, newY, true)) {
             game.swapParticles(particle.x, particle.y, newX, newY);
         }
     }
 }
 
 export function colorCurve(points: { offset: number; color: string }[], position: number): string {
-    position = 1 - Math.max(0, Math.min(1, position)); // Clamp position to [0, 1] and invert.
+    if (points.length === 1) {
+        return points[0]!.color; // Only one point, return its color.
+    }
+    if (points.length === 0) {
+        return "#000000"; // No points, default to black.
+    }
+    if (points.length === 2) {
+        return lerp(points[0]!.color, points[1]!.color, position); // Two points, just lerp between them.
+    }
+    position = Math.max(0, Math.min(1, position)); // Clamp position to [0, 1] and invert.
     // Sort points by offset
     points.sort((a, b) => a.offset - b.offset);
     // Find the two points we are between
@@ -689,25 +726,490 @@ export function colorCurve(points: { offset: number; color: string }[], position
     const range = endPoint!.offset - startPoint!.offset;
     const ratio = range === 0 ? 0 : (position - startPoint!.offset) / range;
     // Interpolate between the two colors
-    const r1 = parseInt(startPoint!.color.slice(1, 3), 16);
-    const g1 = parseInt(startPoint!.color.slice(3, 5), 16);
-    const b1 = parseInt(startPoint!.color.slice(5, 7), 16);
-    const r2 = parseInt(endPoint!.color.slice(1, 3), 16);
-    const g2 = parseInt(endPoint!.color.slice(3, 5), 16);
-    const b2 = parseInt(endPoint!.color.slice(5, 7), 16);
-    const r = Math.round(r1 + (r2 - r1) * ratio);
-    const g = Math.round(g1 + (g2 - g1) * ratio);
-    const b = Math.round(b1 + (b2 - b1) * ratio);
-    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    return lerp(startPoint!.color, endPoint!.color, ratio);
 }
 
 const hasTouchSupport = (): boolean => {
     return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 };
 
+export interface RaycastConfig {
+
+}
+
+export abstract class Renderer {
+    abstract init(game: Powders): void;
+    abstract destroy(): void;
+    abstract renderGrid(game: Powders): void;
+    abstract renderParticles(game: Powders): void;
+    abstract renderDebug(game: Powders): void;
+    abstract renderPost(game: Powders): void; // Any post-processing or whatever
+    abstract get isGPU(): boolean;
+    abstract get supportsSpecialGraphics(): boolean;
+    abstract get supportsParticles(): boolean;
+}
+
+export class CPURenderer extends Renderer {
+    ctx: CanvasRenderingContext2D | null = null;
+
+    init(game: Powders): void {
+        this.ctx = game.canvas.getContext("2d");
+    }
+
+    destroy(): void {
+        this.ctx = null;
+    }
+
+    renderGrid(game: Powders): void {
+        if (!this.ctx) return;
+        this.ctx.clearRect(0, 0, game.canvas.width, game.canvas.height);
+        const glows: { x: number; y: number; color: string }[] = [];
+        const cellWidth = game.canvas.width / game.width;
+        const cellHeight = game.canvas.height / game.height;
+        this.ctx.fillStyle = "#000000";
+        for (let x = 0; x < game.width; x++) {
+            for (let y = 0; y < game.height; y++) {
+                const particle = game.getParticle(x, y);
+                if (particle && particle.type !== null) {
+                    const type = powderTypes.require(particle.type!);
+                    this.ctx.fillStyle = particle.getColor();
+                    this.ctx.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+                    if (type.luminosity) {
+                        glows.push({ x: x * cellWidth, y: y * cellHeight, color: particle.getColor() });
+                    }
+                }
+            }
+        }
+        // Draw glow vfx
+        this.ctx.globalAlpha = 0.5;
+        for (const glow of glows) {
+            this.ctx.fillStyle = glow.color;
+            this.ctx.fillRect(glow.x - cellWidth, glow.y - cellHeight, cellWidth * 3, cellHeight * 3);
+        }
+        this.ctx.globalAlpha = 1.0;
+    }
+
+    renderParticles(game: Powders): void {
+        if (!this.ctx) return;
+        const cellWidth = game.canvas.width / game.width;
+        const cellHeight = game.canvas.height / game.height;
+        for (const particle of game.particles) {
+            this.ctx.fillStyle = particle.color;
+            this.ctx.fillRect(particle.x * cellWidth, particle.y * cellHeight, particle.width * cellWidth, particle.height * cellHeight);
+        }
+    }
+
+    renderDebug(game: Powders): void {
+        if (!this.ctx) return;
+        const cellWidth = game.canvas.width / game.width;
+        const cellHeight = game.canvas.height / game.height;
+        for (const shape of game.debugRenderShapes) {
+            this.ctx.fillStyle = shape.color;
+            this.ctx.fillRect(shape.x * cellWidth, shape.y * cellHeight, shape.width * cellWidth, shape.height * cellHeight);
+        }
+    }
+
+    renderPost(game: Powders): void {
+        if (!this.ctx) return;
+        const cellWidth = game.canvas.width / game.width;
+        const cellHeight = game.canvas.height / game.height;
+        this.ctx.fillStyle = "white";
+        this.ctx.globalAlpha = 0.35;
+        this.ctx.fillRect((game.mouseX - game.brushSize) * cellWidth, (game.mouseY - game.brushSize) * cellHeight, (game.brushSize * 2 + 1) * cellWidth, (game.brushSize * 2 + 1) * cellHeight);
+        this.ctx.globalAlpha = 1.0;
+    }
+
+    get isGPU(): boolean {
+        return false;
+    }
+
+    get supportsSpecialGraphics(): boolean {
+        return true;
+    }
+
+    get supportsParticles(): boolean {
+        return true;
+    }
+}
+
+export class GPURenderer extends Renderer {
+    ctx: WebGL2RenderingContext | null = null;
+    particleShaderProgram: WebGLProgram | null = null;
+    gridShaderProgram: WebGLProgram | null = null;
+    brushPreviewProgram: WebGLProgram | null = null;
+    framebuffer: WebGLFramebuffer | null = null;
+    cellWidth: number = 0;
+    cellHeight: number = 0;
+
+    init(game: Powders): void {
+        this.ctx = game.canvas.getContext("webgl2");
+        if (!this.ctx) {
+            throw new Error("WebGL2 not supported");
+        }
+        // Initialize WebGL resources here (shaders, buffers, etc.)
+        this.particleShaderProgram = this.createParticleShaderProgram();
+        this.gridShaderProgram = this.createGridShaderProgram();
+        this.framebuffer = this.ctx.createFramebuffer();
+        this.shaderInit(game);
+    }
+
+    private shaderInit(game: Powders): void {
+        if (!this.ctx) {
+            throw new Error("WebGL context not initialized");
+        }
+        const cellWidth = game.canvas.width / game.width;
+        const cellHeight = game.canvas.height / game.height;
+        this.ctx.viewport(0, 0, game.canvas.width, game.canvas.height);
+        this.ctx.clearColor(0, 0, 0, 1);
+        this.ctx.clear(this.ctx.COLOR_BUFFER_BIT);
+        this.cellWidth = cellWidth;
+        this.cellHeight = cellHeight;
+    }
+
+    private createParticleShaderProgram(): WebGLProgram {
+        if (!this.ctx) {
+            throw new Error("WebGL context not initialized");
+        }
+        // Create and compile vertex and fragment shaders, then link them into a program
+        // Vertex shader (simple pass-through)
+        const vertexShaderSource = `
+            attribute vec2 a_position;
+            attribute vec4 a_color;
+            varying vec4 v_color;
+            uniform vec2 scale;
+            void main() {
+                gl_Position = vec4(a_position * scale, 0.0, 1.0);
+                v_color = a_color;
+            }
+        `;
+        // Fragment shader (simple color output)
+        const fragmentShaderSource = `
+            precision mediump float;
+            varying vec4 v_color;
+            void main() {
+                gl_FragColor = v_color;
+            }
+        `;
+        return this.createShaderProgram(vertexShaderSource, fragmentShaderSource);
+    }
+
+    private createGridShaderProgram(): WebGLProgram {
+        if (!this.ctx) {
+            throw new Error("WebGL context not initialized");
+        }
+        // Create and compile vertex and fragment shaders for grid rendering, then link them into a program
+        // Vertex shader (simple pass-through)
+        const vertexShaderSource = `
+            attribute vec2 a_position;
+            void main() {
+                gl_Position = vec4(a_position, 0.0, 1.0);
+            }
+        `;
+        // Fragment shader (gets color from uniform)
+        const fragmentShaderSource = `
+            precision mediump float;
+            uniform vec4 u_color;
+            void main() {
+                gl_FragColor = u_color;
+            }
+        `;
+        return this.createShaderProgram(vertexShaderSource, fragmentShaderSource);
+    }
+
+    private createShaderProgram(vertexSource: string, fragmentSource: string): WebGLProgram {
+        if (!this.ctx) {
+            throw new Error("WebGL context not initialized");
+        }
+        const vertexShader = this.compileShader(this.ctx.VERTEX_SHADER, vertexSource);
+        const fragmentShader = this.compileShader(this.ctx.FRAGMENT_SHADER, fragmentSource);
+        const shaderProgram = this.ctx.createProgram();
+        if (!shaderProgram) {
+            throw new Error("Failed to create shader program");
+        }
+        this.ctx.attachShader(shaderProgram, vertexShader);
+        this.ctx.attachShader(shaderProgram, fragmentShader);
+        this.ctx.linkProgram(shaderProgram);
+        if (!this.ctx.getProgramParameter(shaderProgram, this.ctx.LINK_STATUS)) {
+            const info = this.ctx.getProgramInfoLog(shaderProgram);
+            throw new Error("Failed to link shader program: " + info);
+        }
+        return shaderProgram;
+    }
+
+    private compileShader(type: number, source: string): WebGLShader {
+        if (!this.ctx) {
+            throw new Error("WebGL context not initialized");
+        }
+        const shader = this.ctx.createShader(type);
+        if (!shader) {
+            throw new Error("Failed to create shader");
+        }
+        this.ctx.shaderSource(shader, source);
+        this.ctx.compileShader(shader);
+        if (!this.ctx.getShaderParameter(shader, this.ctx.COMPILE_STATUS)) {
+            const info = this.ctx.getShaderInfoLog(shader);
+            throw new Error("Failed to compile shader: " + info);
+        }
+        return shader;
+    }
+
+    destroy(): void {
+        if (this.ctx) {
+            if (this.particleShaderProgram) {
+                this.ctx.deleteProgram(this.particleShaderProgram);
+                this.particleShaderProgram = null;
+            }
+            if (this.framebuffer) {
+                this.ctx.deleteFramebuffer(this.framebuffer);
+                this.framebuffer = null;
+            }
+            this.ctx = null;
+        }
+    }
+
+    renderGrid(game: Powders): void {
+        if (!this.ctx || !this.gridShaderProgram) return;
+        const gl = this.ctx;
+        const canvasW = game.canvas.width;
+        const canvasH = game.canvas.height;
+        const cellW = canvasW / game.width;
+        const cellH = canvasH / game.height;
+
+        gl.useProgram(this.gridShaderProgram);
+        const posAttrib = gl.getAttribLocation(this.gridShaderProgram, "a_position");
+        const colorUniform = gl.getUniformLocation(this.gridShaderProgram, "u_color");
+        const scaleUniform = gl.getUniformLocation(this.gridShaderProgram, "scale");
+        gl.uniform2f(scaleUniform, cellW / canvasW, cellH / canvasH);
+
+        const posBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+        gl.enableVertexAttribArray(posAttrib);
+        gl.vertexAttribPointer(posAttrib, 2, gl.FLOAT, false, 0, 0);
+
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        for (let x = 0; x < game.width; x++) {
+            for (let y = 0; y < game.height; y++) {
+                const particle = game.getParticle(x, y);
+                if (!particle) continue;
+                if (particle.type === null) continue;
+
+                const colorStr = particle.getColor();
+                // Parse hex color (#rrggbb or #rgb)
+                let r = 0, g = 0, b = 0;
+                if (colorStr.startsWith("#")) {
+                    const hex = colorStr.slice(1);
+                    if (hex.length === 3) {
+                        r = parseInt(hex[0]! + hex[0], 16) / 255;
+                        g = parseInt(hex[1]! + hex[1], 16) / 255;
+                        b = parseInt(hex[2]! + hex[2], 16) / 255;
+                    } else {
+                        r = parseInt(hex.slice(0, 2), 16) / 255;
+                        g = parseInt(hex.slice(2, 4), 16) / 255;
+                        b = parseInt(hex.slice(4, 6), 16) / 255;
+                    }
+                }
+
+                // Convert pixel coords to clip space [-1, 1]
+                const x0 = (x * cellW / canvasW) * 2 - 1;
+                const y0 = 1 - (y * cellH / canvasH) * 2;
+                const x1 = ((x + 1) * cellW / canvasW) * 2 - 1;
+                const y1 = 1 - ((y + 1) * cellH / canvasH) * 2;
+
+                const positions = new Float32Array([
+                    x0, y0,
+                    x1, y0,
+                    x0, y1,
+                    x0, y1,
+                    x1, y0,
+                    x1, y1,
+                ]);
+
+                gl.bufferData(gl.ARRAY_BUFFER, positions, gl.DYNAMIC_DRAW);
+                gl.uniform4f(colorUniform, r, g, b, 1.0);
+                gl.drawArrays(gl.TRIANGLES, 0, 6);
+            }
+        }
+
+        gl.deleteBuffer(posBuffer);
+    }
+
+    renderParticles(game: Powders): void {
+        if (!this.ctx || !this.particleShaderProgram) return;
+        const gl = this.ctx;
+        const canvasW = game.canvas.width;
+        const canvasH = game.canvas.height;
+        const cellW = canvasW / game.width;
+        const cellH = canvasH / game.height;
+        gl.useProgram(this.particleShaderProgram);
+        const posAttrib = gl.getAttribLocation(this.particleShaderProgram, "a_position");
+        const colorAttrib = gl.getAttribLocation(this.particleShaderProgram, "a_color");
+        const scaleUniform = gl.getUniformLocation(this.particleShaderProgram, "scale");
+        gl.uniform2f(scaleUniform, cellW / canvasW, cellH / canvasH);
+        gl.enableVertexAttribArray(posAttrib);
+        gl.enableVertexAttribArray(colorAttrib);
+        const posBuffer = gl.createBuffer();
+        const colorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+        gl.vertexAttribPointer(posAttrib, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.vertexAttribPointer(colorAttrib, 4, gl.FLOAT, false, 0, 0);
+        for (const particle of game.particles) {
+            const colorStr = game.convertCssToHex(particle.color);
+            let r = 0, g = 0, b = 0;
+            if (colorStr.startsWith("#")) {
+                const hex = colorStr.slice(1);
+                if (hex.length === 3) {
+                    r = parseInt(hex[0]! + hex[0], 16) / 255;
+                    g = parseInt(hex[1]! + hex[1], 16) / 255;
+                    b = parseInt(hex[2]! + hex[2], 16) / 255;
+                }
+                else {
+                    r = parseInt(hex.slice(0, 2), 16) / 255;
+                    g = parseInt(hex.slice(2, 4), 16) / 255;
+                    b = parseInt(hex.slice(4, 6), 16) / 255;
+                }
+            }
+
+            const x0 = (particle.x * cellW / canvasW) * 2 - 1;
+            const y0 = 1 - (particle.y * cellH / canvasH) * 2;
+            const x1 = ((particle.x + particle.width) * cellW / canvasW) * 2 - 1;
+            const y1 = 1 - ((particle.y + particle.height) * cellH / canvasH) * 2;
+            const positions = new Float32Array([
+                x0, y0,
+                x1, y0,
+                x0, y1,
+                x0, y1,
+                x1, y0,
+                x1, y1,
+            ]);
+            gl.bufferData(gl.ARRAY_BUFFER, positions, gl.DYNAMIC_DRAW);
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+        }
+    }
+
+    renderDebug(game: Powders): void {
+        if (!this.ctx || !this.particleShaderProgram) return;
+        // Same thing as particles, just set alpha lower
+        const gl = this.ctx;
+        const canvasW = game.canvas.width;
+        const canvasH = game.canvas.height;
+        const cellW = canvasW / game.width;
+        const cellH = canvasH / game.height;
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.useProgram(this.particleShaderProgram);
+        const posAttrib = gl.getAttribLocation(this.particleShaderProgram, "a_position");
+        const colorAttrib = gl.getAttribLocation(this.particleShaderProgram, "a_color");
+        const scaleUniform = gl.getUniformLocation(this.particleShaderProgram, "scale");
+        gl.uniform2f(scaleUniform, cellW / canvasW, cellH / canvasH);
+        gl.enableVertexAttribArray(posAttrib);
+        gl.enableVertexAttribArray(colorAttrib);
+        const posBuffer = gl.createBuffer();
+        const colorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+        gl.vertexAttribPointer(posAttrib, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.vertexAttribPointer(colorAttrib, 4, gl.FLOAT, false, 0, 0);
+        for (const shape of game.debugRenderShapes) {
+            const colorStr = game.convertCssToHex(shape.color);
+            let r = 0, g = 0, b = 0;
+            if (colorStr.startsWith("#")) {
+                const hex = colorStr.slice(1);
+                if (hex.length === 3) {
+                    r = parseInt(hex[0]! + hex[0], 16) / 255;
+                    g = parseInt(hex[1]! + hex[1], 16) / 255;
+                    b = parseInt(hex[2]! + hex[2], 16) / 255;
+                } else {
+                    r = parseInt(hex.slice(0, 2), 16) / 255;
+                    g = parseInt(hex.slice(2, 4), 16) / 255;
+                    b = parseInt(hex.slice(4, 6), 16) / 255;
+                }
+            }
+            const x0 = (shape.x * cellW / canvasW) * 2 - 1;
+            const y0 = 1 - (shape.y * cellH / canvasH) * 2;
+            const x1 = ((shape.x + shape.width) * cellW / canvasW) * 2 - 1;
+            const y1 = 1 - ((shape.y + shape.height) * cellH / canvasH) * 2;
+            const positions = new Float32Array([
+                x0, y0,
+                x1, y0,
+                x0, y1,
+                x0, y1,
+                x1, y0,
+                x1, y1,
+            ]);
+            gl.bufferData(gl.ARRAY_BUFFER, positions, gl.DYNAMIC_DRAW);
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+        }
+    }
+
+    renderPost(game: Powders): void {
+        // Simply draw a white transparent rectangle for brush preview (with particle shader)
+        if (!this.ctx || !this.particleShaderProgram) return;
+        const gl = this.ctx;
+        const canvasW = game.canvas.width;
+        const canvasH = game.canvas.height;
+        const cellW = canvasW / game.width;
+        const cellH = canvasH / game.height;
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.useProgram(this.particleShaderProgram);
+        const posAttrib = gl.getAttribLocation(this.particleShaderProgram, "a_position");
+        const colorAttrib = gl.getAttribLocation(this.particleShaderProgram, "a_color");
+        const scaleUniform = gl.getUniformLocation(this.particleShaderProgram, "scale");
+        gl.uniform2f(scaleUniform, cellW / canvasW, cellH / canvasH);
+        gl.enableVertexAttribArray(posAttrib);
+        gl.enableVertexAttribArray(colorAttrib);
+        const posBuffer = gl.createBuffer();
+        const colorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+        gl.vertexAttribPointer(posAttrib, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.vertexAttribPointer(colorAttrib, 4, gl.FLOAT, false, 0, 0);
+        const x0 = ((game.mouseX - game.brushSize) * cellW / canvasW) * 2 - 1;
+        const y0 = 1 - ((game.mouseY - game.brushSize) * cellH / canvasH) * 2;
+        const x1 = ((game.mouseX + game.brushSize + 1) * cellW / canvasW) * 2 - 1;
+        const y1 = 1 - ((game.mouseY + game.brushSize + 1) * cellH / canvasH) * 2;
+        const positions = new Float32Array([
+            x0, y0,
+            x1, y0,
+            x0, y1,
+            x0, y1,
+            x1, y0,
+            x1, y1,
+        ]);
+        const r = 1.0, g = 1.0, b = 1.0, a = 0.35;
+        const colors = new Float32Array([
+            r, g, b, a,
+            r, g, b, a,
+            r, g, b, a,
+            r, g, b, a,
+            r, g, b, a,
+            r, g, b, a,
+        ]);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.DYNAMIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, colors, gl.DYNAMIC_DRAW);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    get isGPU(): boolean {
+        return true;
+    }
+
+    get supportsSpecialGraphics(): boolean {
+        return true;
+    }
+
+    get supportsParticles(): boolean {
+        return true;
+    }
+}
+
 export class Powders {
     canvas: HTMLCanvasElement;
-    ctx: CanvasRenderingContext2D;
+    renderer: Renderer;
+    rendererOption: string = "auto"; // "auto", "gpu", or "cpu"
     grid: Particle[][];
     mouseX: number = 0;
     mouseY: number = 0;
@@ -728,9 +1230,14 @@ export class Powders {
     debugRenderShapesInput: HTMLInputElement;
     doDebugRender: boolean = false;
     isMobile: boolean;
+    optimizeSpecialEffects: boolean = false; // Performance option to optimize special effects (like glow) by rendering them with lower quality or using a different rendering method
+    particleLimit: number | null = 1000; // Null for unlimited
+    particlesEnabled: boolean = true; // Particles enabled?
+    particles: { x: number; y: number; width: number; height: number; color: string }[] = [];
     disableAi: boolean = false; // Performance option to disable AI
     noSpecialGraphics: boolean = false; // Performance option to disable special graphics (like glow)
     _noInput: boolean = false; // Disables inputs temporarily
+    highQualityExplode: boolean = false; // Makes explosions higher quality (64 rays instead of 32)
     debugRenderShapes: { x: number; y: number; width: number; height: number; color: string; forTick: boolean }[] = [];
 
     set noInput(value: boolean) {
@@ -757,22 +1264,17 @@ export class Powders {
         return this._paused;
     }
 
-    constructor() {
+    constructor(renderer?: Renderer) {
         this.canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
         // Quick phone UI change on the canvas (For larger canvas)
         console.log(`Window size: ${window.innerWidth}x${window.innerHeight}`);
         if (window.innerWidth < window.innerHeight && window.innerHeight >= 1000) { // More space for controls below, use larger canvas
             this.canvas.classList.add("mobile");
         }
-        if (window.innerHeight < 720) { // Small screen, switch header to mobile version (hidden)
+        if ((window.innerHeight < 750 || window.innerWidth < 480) && window.innerWidth < 1280) { // Small screen, switch header to mobile version (hidden)
             const header = document.querySelector("header")!;
             header.classList.add("mobile");
         }
-        const context = this.canvas.getContext("2d");
-        if (!context) {
-            throw new Error("Failed to get 2D context");
-        }
-        this.ctx = context;
         this.grid = [];
         this.debugRenderShapesInput = document.getElementById("debug-render-shapes") as HTMLInputElement;
         this.debugRenderShapesInput.onchange = () => {
@@ -812,9 +1314,57 @@ export class Powders {
             };
         }
         this.initSettings();
+        if (!renderer) {
+            renderer = this.doAutoRenderer();
+        } else {
+            // Check if the provided renderer is valid
+            if (!(renderer instanceof Renderer)) {
+                throw new Error("Invalid renderer provided. Renderer must be an instance of the Renderer class.");
+            }
+        }
+        this.renderer = renderer;
+        this.renderer.init(this);
         this.initHtml();
         this.resize(this.canvas.width, this.canvas.height, false);
-        console.log("Powders game initialized!");
+    }
+
+    private doAutoRenderer() {
+        const option = this.rendererOption.toLowerCase();
+        if (option === "gpu") {
+            try {
+                return new GPURenderer();
+            } catch (e) {
+                console.warn("GPU rendering not supported, falling back to CPU renderer.");
+                return new CPURenderer();
+            }
+        } else if (option === "cpu") {
+            return new CPURenderer();
+        } else {
+            // Automatically switch renderers based on settings and support
+            try {
+                this.renderer = new GPURenderer();
+            } catch (e) {
+                console.warn("GPU rendering not supported, falling back to CPU renderer.");
+                this.renderer = new CPURenderer();
+            }
+            return this.renderer;
+        }
+    }
+
+    public selectorMatch(selector: string, particle: Particle) {
+        const types = this.parseSelector(selector);
+        return types.includes(particle.type);
+    }
+
+    // Parses a selector into a list of types that the selector includes
+    public parseSelector(selector: string): (string | null)[] {
+        const typeIds = selector.split(",");
+        const types: (string | null)[] = [];
+        for (const typeId of typeIds) {
+            const processed = this.processTypeId(typeId.trim(), null) as (string | null)[];
+            types.push(...processed);
+        }
+        return types;
     }
 
     public initHtml() {
@@ -873,6 +1423,11 @@ export class Powders {
         return {
             disableAi: this.disableAi,
             noSpecialGraphics: this.noSpecialGraphics,
+            highQualityExplode: this.highQualityExplode,
+            rendererOption: this.rendererOption,
+            particlesEnabled: this.particlesEnabled,
+            particleLimit: this.particleLimit,
+            optimizeSpecialEffects: this.optimizeSpecialEffects,
         };
     }
 
@@ -903,6 +1458,21 @@ export class Powders {
             if (typeof settings.noSpecialGraphics === "boolean") {
                 this.noSpecialGraphics = settings.noSpecialGraphics;
             }
+            if (typeof settings.highQualityExplode === "boolean") {
+                this.highQualityExplode = settings.highQualityExplode;
+            }
+            if (typeof settings.rendererOption === "string") {
+                this.rendererOption = settings.rendererOption;
+            }
+            if (typeof settings.optimizeSpecialEffects === "boolean") {
+                this.optimizeSpecialEffects = settings.optimizeSpecialEffects;
+            }
+            if (typeof settings.particlesEnabled === "boolean") {
+                this.particlesEnabled = settings.particlesEnabled;
+            }
+            if (typeof settings.particleLimit === "number" || settings.particleLimit === null) {
+                this.particleLimit = settings.particleLimit;
+            }
         }
         // Initialize settings stuff
         const disableAiCheckbox = document.getElementById("settings-disable-ai") as HTMLInputElement;
@@ -917,10 +1487,58 @@ export class Powders {
             this.noSpecialGraphics = noSpecialGraphicsCheckbox.checked;
             this.saveSettings();
         };
+        const highQualityExplodeCheckbox = document.getElementById("settings-high-quality-explode") as HTMLInputElement;
+        highQualityExplodeCheckbox.checked = this.highQualityExplode;
+        highQualityExplodeCheckbox.onchange = () => {
+            this.highQualityExplode = highQualityExplodeCheckbox.checked;
+            this.saveSettings();
+        };
+        const rendererSelect = document.getElementById("settings-renderer") as HTMLSelectElement;
+        rendererSelect.value = this.rendererOption;
+        rendererSelect.onchange = () => {
+            this.rendererOption = rendererSelect.value;
+            this.saveSettings();
+            const refreshPage = confirm("Changing the renderer requires a page refresh. Refresh now?");
+            if (refreshPage) {
+                window.location.reload();
+            }
+        };
+        const particleLimitSelect = document.getElementById("settings-particle-limit") as HTMLSelectElement;
+        particleLimitSelect.value = this.particlesEnabled ? (this.particleLimit === null ? "unlimited" : this.particleLimit.toString()) : "disabled";
+        particleLimitSelect.onchange = () => {
+            const value = particleLimitSelect.value;
+            if (value === "disabled") {
+                this.particlesEnabled = false;
+                this.particleLimit = null;
+            } else if (value === "unlimited") {
+                this.particlesEnabled = true;
+                this.particleLimit = null;
+            } else {
+                this.particlesEnabled = true;
+                this.particleLimit = parseInt(value, 10);
+            }
+            this.saveSettings();
+        };
+        const optimizeSpecialEffectsCheckbox = document.getElementById("settings-optimize-special-effects") as HTMLInputElement;
+        optimizeSpecialEffectsCheckbox.checked = this.optimizeSpecialEffects;
+        optimizeSpecialEffectsCheckbox.onchange = () => {
+            this.optimizeSpecialEffects = optimizeSpecialEffectsCheckbox.checked;
+            this.saveSettings();
+        };
         const settingsCloseButton = document.getElementById("settings-close-button")!;
         settingsCloseButton.onclick = () => {
             this.toggleSettings();
         };
+    }
+
+    public getSetting(key: string, fromLocal: boolean = false): any {
+        if (fromLocal) {
+            const settings = this.getLocalStorageSettings();
+            if (settings && key in settings) {
+                return settings[key];
+            }
+        }
+        return this.getSettingsDict()[key];
     }
 
     public renderDebugSquare(x: number, y: number, width: number, height: number, color: string, forTick: boolean = true) {
@@ -990,7 +1608,7 @@ export class Powders {
         );
     }
 
-    public canSwap(type: string | null, x: number, y: number): boolean {
+    public canSwap(type: string | null, x: number, y: number, sameTypeSwap: boolean = false): boolean {
         if (this.isFree(x, y)) {
             return true;
         }
@@ -1000,25 +1618,33 @@ export class Powders {
         }
         const otherType = powderTypes.require(otherParticle.type!);
         const thisType = type ? powderTypes.require(type) : null;
+        // if (sameTypeSwap && thisType === otherType) {
+        //     return true;
+        // }
         return (thisType?.weight ?? 1) > otherType.weight;
     }
 
-    public spawnParticle(x: number, y: number, type: string | null, replace: boolean = false) {
+    public spawnParticle(x: number, y: number, type: string | null, replace: boolean = false, forceMainGrid: boolean = false): Particle | undefined {
         if (x < 0 || y < 0 || y >= this.grid.length || x >= this.grid[y]!.length) {
             return; // Out of bounds
         }
         if (this.isFree(x, y) || replace) {
             const particle: Particle = new Particle(x, y, type);
             (this.tmpGrid || this.grid)[y]![x] = particle;
+            if (forceMainGrid && this.tmpGrid) {
+                this.grid[y]![x] = particle;
+            }
             const typeData = type ? powderTypes.require(type) : null;
             if (typeData?.onSpawn) {
                 typeData.onSpawn(this, particle);
             }
+            return particle;
         }
+        return undefined;
     }
 
-    public removeParticle(x: number, y: number) {
-        this.spawnParticle(x, y, null, true);
+    public removeParticle(x: number, y: number, forceMainGrid: boolean = false) {
+        this.spawnParticle(x, y, null, true, forceMainGrid);
     }
 
     public toggleSettings() {
@@ -1193,22 +1819,28 @@ export class Powders {
     }
 
     public drawParticleRect(x: number, y: number, width: number, height: number, type: string | null, replace: boolean = false) {
+        let particles: Particle[] = [];
         for (let dy = 0; dy < height; dy++) {
             for (let dx = 0; dx < width; dx++) {
-                this.spawnParticle(x + dx, y + dy, type, replace);
+                const particle = this.spawnParticle(x + dx, y + dy, type, replace);
+                if (particle) {
+                    particles.push(particle);
+                }
             }
         }
+        return particles;
     }
 
-    public drawParticleLine(x1: number, y1: number, x2: number, y2: number, type: string | null, replace: boolean = false, width: number = 1) {
+    public drawParticleLine(x1: number, y1: number, x2: number, y2: number, type: string | null, replace: boolean = false, width: number = 1): Particle[] {
+        let particles: Particle[] = [];
         width = (width * 2) + 1; // Fix any issues with size
         const dx = x2 - x1;
         const dy = y2 - y1;
         const steps = Math.max(Math.abs(dx), Math.abs(dy));
         const offset = Math.floor(width / 2);
         if (steps === 0) {
-            this.drawParticleRect(Math.round(x1) - offset, Math.round(y1) - offset, width, width, type, replace);
-            return;
+            particles = this.drawParticleRect(Math.round(x1) - offset, Math.round(y1) - offset, width, width, type, replace);
+            return particles;
         }
         const stepX = dx / steps;
         const stepY = dy / steps;
@@ -1222,14 +1854,15 @@ export class Powders {
             if (x !== prevX || y !== prevY) {
                 if (x !== prevX && y !== prevY) {
                     // For diagonal movement, draw both horizontal and vertical steps
-                    this.drawParticleRect(x, prevY, width, width, type, replace);
-                    this.drawParticleRect(prevX, y, width, width, type, replace);
+                    particles.push(...this.drawParticleRect(x, prevY, width, width, type, replace));
+                    particles.push(...this.drawParticleRect(prevX, y, width, width, type, replace));
                 }
-                this.drawParticleRect(x, y, width, width, type, replace);
+                particles.push(...this.drawParticleRect(x, y, width, width, type, replace));
                 prevX = x;
                 prevY = y;
             }
         }
+        return particles;
     }
 
     public getAdjacentParticles(x: number, y: number): Particle[] {
@@ -1326,20 +1959,25 @@ export class Powders {
                             }
                         }
                     }
-                    const adjacentParticles = this.getAdjacentParticles(particle.x, particle.y);
-                    for (const adj of adjacentParticles) {
-                        if (adj.type !== null) {
-                            const tempDiff = particle.temp - adj.temp;
-                            const transferAmount = tempDiff * (powderTypes.require(particle.type!).tempTransferRate || airTempTransferRate);
-                            particle.temp -= transferAmount;
-                            adj.temp += transferAmount;
+                    if (!type.noTransfer) {
+                        const adjacentParticles = this.getAdjacentParticles(particle.x, particle.y);
+                        for (const adj of adjacentParticles) {
+                            if (adj.type !== null) {
+                                const adjType = powderTypes.require(adj.type);
+                                if (!(type.noTransfer || adjType.noTransfer)) {
+                                    const tempDiff = particle.temp - adj.temp;
+                                    const transferAmount = tempDiff * (type.tempTransferRate || airTempTransferRate);
+                                    particle.temp -= transferAmount;
+                                    adj.temp += transferAmount;
+                                }
+                            }
                         }
-                    }
-                    if (adjacentParticles.filter(p => p !== null).length < 8) {
-                        // If there are less than 8 (non-null) adjacent particles, transfer some heat to the air (which is effectively a heat loss)
-                        const tempDiff = particle.temp - 22; // Assuming air temp is 22 Celsius
-                        const transferAmount = tempDiff * airTempTransferRate;
-                        particle.temp -= transferAmount;
+                        if (adjacentParticles.filter(p => p !== null).length < 8) {
+                            // If there are less than 8 (non-null) adjacent particles, transfer some heat to the air (which is effectively a heat loss)
+                            const tempDiff = particle.temp - 22; // Assuming air temp is 22 Celsius
+                            const transferAmount = tempDiff * airTempTransferRate;
+                            particle.temp -= transferAmount;
+                        }
                     }
                     if (type.meltingPoint !== null && type.meltingPoint !== undefined && particle.temp >= type.meltingPoint) {
                         this.spawnParticle(particle.x, particle.y, type.meltingResult!, true);
@@ -1525,7 +2163,129 @@ export class Powders {
         return particles;
     }
 
+    public backupRenderGrid() {
+        // Backup function in case the main renderer fails
+        const ctx = this.canvas.getContext("2d")!;
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        for (let y = 0; y < this.grid.length; y++) {
+            for (let x = 0; x < this.grid[y]!.length; x++) {
+                const particle = this.grid[y]![x];
+                if (particle && particle.type !== null) {
+                    const typeData = powderTypes.require(particle.type);
+                    ctx.fillStyle = typeData.color;
+                    ctx.fillRect(x, y, 1, 1);
+                }
+            }
+        }
+    }
+
+    public backupRenderDebug() {
+        // Backup function in case the main renderer fails
+        const ctx = this.canvas.getContext("2d")!;
+        const showDebugShapes = this.doDebugRender && this.debugRenderShapes.length > 0;
+        if (showDebugShapes) {
+            ctx.globalAlpha = 0.75;
+            for (const shape of this.debugRenderShapes) {
+                ctx.fillStyle = shape.color;
+                ctx.fillRect(shape.x, shape.y, shape.width, shape.height);
+            }
+        }
+        ctx.globalAlpha = 1.0;
+    }
+
+    public backupRenderParticles() { // Generic particles in games, not to be confused with grid particles (like powders or liquids)
+        // Backup function in case the main renderer fails, renders particles with CPU
+        const ctx = this.canvas.getContext("2d")!;
+        this.particles.forEach(particle => {
+            ctx.fillStyle = particle.color;
+            ctx.fillRect(particle.x, particle.y, particle.width, particle.height);
+        });
+    }
+
+    public backupRenderPost() {
+        // Draw brush preview if no post-render function is available
+        const ctx = this.canvas.getContext("2d")!;
+        ctx.fillStyle = "white";
+        ctx.globalAlpha = 0.35;
+        ctx.fillRect(this.mouseX - this.brushSize, this.mouseY - this.brushSize, this.brushSize * 2 + 1, this.brushSize * 2 + 1);
+        ctx.globalAlpha = 1.0;
+    }
+
+    public convertCssToHex(cssColor: string): string {
+        if (cssColor.startsWith("#")) {
+            return cssColor;
+        } else if (cssColor.startsWith("rgb")) {
+            const rgbValues = cssColor.match(/\d+/g);
+            if (rgbValues && rgbValues.length >= 3) {
+                const r = parseInt(rgbValues[0]).toString(16).padStart(2, "0");
+                const g = parseInt(rgbValues[1]!).toString(16).padStart(2, "0");
+                const b = parseInt(rgbValues[2]!).toString(16).padStart(2, "0");
+                return `#${r}${g}${b}`;
+            }
+        } else if (cssColor.startsWith("hsl")) {
+            const hslValues = cssColor.match(/[\d.]+/g);
+            if (hslValues && hslValues.length >= 3) {
+                let h = parseFloat(hslValues[0]);
+                const s = parseFloat(hslValues[1]!) / 100;
+                const l = parseFloat(hslValues[2]!) / 100;
+                h = h % 360;
+                const c = (1 - Math.abs(2 * l - 1)) * s;
+                const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+                const m = l - c / 2;
+                let r = 0, g = 0, b = 0;
+                if (h < 60) {
+                    r = c; g = x; b = 0;
+                } else if (h < 120) {
+                    r = x; g = c; b = 0;
+                } else if (h < 180) {
+                    r = 0; g = c; b = x;
+                } else if (h < 240) {
+                    r = 0; g = x; b = c;
+                } else if (h < 300) {
+                    r = x; g = 0; b = c;
+                } else {
+                    r = c; g = 0; b = x;
+                }
+                const strR = Math.round((r + m) * 255).toString(16).padStart(2, "0");
+                const strG = Math.round((g + m) * 255).toString(16).padStart(2, "0");
+                const strB = Math.round((b + m) * 255).toString(16).padStart(2, "0");
+                return `#${strR}${strG}${strB}`;
+            }
+        } else if (cssColor.toLowerCase() === "transparent") {
+            return "#00000000";
+        } else if (cssColor.startsWith("rgba")) {
+            const rgbaValues = cssColor.match(/[\d.]+/g);
+            if (rgbaValues && rgbaValues.length >= 4) {
+                const r = parseInt(rgbaValues[0]).toString(16).padStart(2, "0");
+                const g = parseInt(rgbaValues[1]!).toString(16).padStart(2, "0");
+                const b = parseInt(rgbaValues[2]!).toString(16).padStart(2, "0");
+                const a = Math.round(parseFloat(rgbaValues[3]!) * 255).toString(16).padStart(2, "0");
+                return `#${r}${g}${b}${a}`;
+            }
+        }
+        // If the color is a named CSS color, we can use a temporary element to convert it to hex
+        const tempElement = document.createElement("div");
+        tempElement.style.color = cssColor;
+        document.body.appendChild(tempElement);
+        const computedColor = getComputedStyle(tempElement).color;
+        document.body.removeChild(tempElement);
+        return this.convertCssToHex(computedColor);
+    }
+
     public render() {
+        let warn = "";
+        // Pre-render grid processing (ensure all particles use valid hex deco)
+        for (let y = 0; y < this.grid.length; y++) {
+            for (let x = 0; x < this.grid[y]!.length; x++) {
+                const particle = this.grid[y]![x];
+                if (particle && particle.type !== null) {
+                    if (particle.deco) {
+                        particle.deco = this.convertCssToHex(particle.deco);
+                    }
+                }
+            }
+        }
         this.debugRenderShapes = this.debugRenderShapes.filter(shape => shape.forTick);
         const toolData = this.selectedTool ? toolTypes.require(this.selectedTool) : null;
         if (toolData && !toolData.onTick) {
@@ -1533,34 +2293,32 @@ export class Powders {
         } else if (this.selectedTool === null) {
             this.mouseDraw(); // For drawing.
         }
-        this.ctx.fillStyle = "black";
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        let glows: { x: number; y: number; color: string }[] = [];
-        for (let y = 0; y < this.grid.length; y++) {
-            for (let x = 0; x < this.grid[y]!.length; x++) {
-                const particle = this.grid[y]![x];
-                if (particle && particle.type !== null) {
-                    const type = powderTypes.require(particle.type);
-                    // particle.deco ? particle.deco : type.color;
-                    const drawColor = particle.deco ? particle.deco : type.color;;
-                    if (type.luminosity) {
-                        glows.push({ x, y, color: drawColor });
-                    }
-                    this.ctx.fillStyle = drawColor;
-                    this.ctx.fillRect(x, y, 1, 1);
-                } // Skip draw otherwise for better performance
+        try {
+            this.renderer.renderGrid(this);
+        } catch (e) {
+            this.backupRenderGrid();
+            warn += `Renderer failed to render grid, using backup renderer (${e}). `;
+        }
+        if (this.doDebugRender) {
+            try {
+                this.renderer.renderDebug(this);
+            } catch (e) {
+                this.backupRenderDebug();
+                warn += `Renderer failed to render debug info, using backup renderer (${e}). `;
             }
         }
-        if (!this.noSpecialGraphics) {
-            for (const glow of glows) {
-                this.ctx.fillStyle = glow.color;
-                this.ctx.globalAlpha = 0.5;
-                this.ctx.fillRect(glow.x - 1, glow.y, 1, 1);
-                this.ctx.fillRect(glow.x + 1, glow.y, 1, 1);
-                this.ctx.fillRect(glow.x, glow.y - 1, 1, 1);
-                this.ctx.fillRect(glow.x, glow.y + 1, 1, 1);
-                this.ctx.globalAlpha = 1.0;
+        if (this.renderer.supportsParticles) {
+            try {
+                this.renderer.renderParticles(this);
+            } catch (e) {
+                // If the renderer supports particles but fails to render them, just ignore the error and continue without rendering particles
             }
+        }
+        try { // Post-render might not work.
+            this.renderer.renderPost(this);
+        } catch (e) {
+            this.backupRenderPost();
+            warn += `Renderer failed to render post-render effects, using backup renderer (${e}). `;
         }
         // Debug info
         const mouseParticle = this.getParticle(this.mouseX, this.mouseY);
@@ -1568,20 +2326,10 @@ export class Powders {
         debugMousePos.textContent = `${this.mouseX}, ${this.mouseY} (${mouseParticle?.type ?? "none"})`;
         const debugParticleInfo = document.getElementById("dbg-particle-info")!;
         debugParticleInfo.textContent = mouseParticle ? `Particle type: ${mouseParticle.type}, Particle deco: ${mouseParticle.deco ?? "none"}, Particle Temperature (Celsius): ${mouseParticle.temp ?? "N/A"}` : "No particle";
-        // Draw brush preview
-        this.ctx.fillStyle = "white";
-        this.ctx.globalAlpha = 0.35;
-        this.ctx.fillRect(this.mouseX - this.brushSize, this.mouseY - this.brushSize, this.brushSize * 2 + 1, this.brushSize * 2 + 1);
-        // Debug rendering
-        const showDebugShapes = this.doDebugRender && this.debugRenderShapes.length > 0;
-        if (showDebugShapes) {
-            this.ctx.globalAlpha = 0.75;
-            for (const shape of this.debugRenderShapes) {
-                this.ctx.fillStyle = shape.color;
-                this.ctx.fillRect(shape.x, shape.y, shape.width, shape.height);
-            }
+        if (warn) { // Dont overwrite if no warnings
+            const debugWarnings = document.getElementById("debug-warnings")!;
+            debugWarnings.textContent = warn;
         }
-        this.ctx.globalAlpha = 1.0;
     }
 
     public getParticle(x: number, y: number): Particle | null {
@@ -1727,31 +2475,23 @@ export class Powders {
         return particles;
     }
 
-    public explode(x: number, y: number, radius: number, force: number, lightFire: boolean = true, nuclear: boolean = false) {
-        const resolution = 32; // 32 rays for a more circular explosion.
+    public explode(x: number, y: number, radius: number, force: number, lightFire: boolean = true, nuclear: boolean = false): { x: number; y: number; particle: Particle | null }[] {
+        if (!this.isFree(x, y)) {
+            this.spawnParticle(x, y, "flash", true, true); // Ignore resistance
+        }
+        const affectedParticles = []; // Also includes particles that blocked explosion
+        const resolution = this.highQualityExplode ? 64 : 32; // Explosion size depends on if a high quality explosion is used.
         for (let i = 0; i < resolution; i++) {
             const angle = (i / resolution) * 2 * Math.PI;
             const rayX = Math.cos(angle);
             const rayY = Math.sin(angle);
-            const particlesInRay = this.getParticlesInLine(x, y, Math.floor(x + rayX * (radius + (nuclear ? 5 : 0))), Math.floor(y + rayY * (radius + (nuclear ? 5 : 0))));
+            const particlesInRay = this.getParticlesInLine(x, y, Math.floor(x + rayX * radius), Math.floor(y + rayY * radius));
             let currentForce = force;
             for (let j = 0; j < particlesInRay.length; j++) {
                 const particle = particlesInRay[j]!;
-                if (j >= radius) {
-                    if (!nuclear) {
-                        break; // Stop the ray if it goes beyond the explosion radius (unless it's a nuclear explosion, which has lingering radiation)
-                    }
-                    // Spawn fallout particles in free space with 5% chance
-                    if (Math.random() < 0.05) {
-                        // Uhhh n101 random's only argument is to use less zero results (default true)
-                        const falloutX = Math.floor(x + rayX * (radius + 5 + n101random()));
-                        const falloutY = Math.floor(y + rayY * (radius + 5 + n101random()));
-                        if (this.isFree(falloutX, falloutY)) {
-                            this.spawnParticle(falloutX, falloutY, "fallout", true);
-                        }
-                    }
+                if (nuclear && this.isFree(particle.x, particle.y)) {
                     // Spawn radiation, plasma, or a neutron (biased to radiation) with 1% chance in free space for nuclear explosions
-                    if (nuclear && Math.random() < 0.01) {
+                    if (Math.random() < 0.05) {
                         const radiationX = Math.floor(x + rayX * (radius + 5 + n101random()));
                         const radiationY = Math.floor(y + rayY * (radius + 5 + n101random()));
                         if (this.isFree(radiationX, radiationY)) {
@@ -1760,7 +2500,7 @@ export class Powders {
                                 this.spawnParticle(radiationX, radiationY, "radiation", true);
                             } else if (random < 0.8) {
                                 this.spawnParticle(radiationX, radiationY, "plasma", true);
-                            } else { // Neutron particles added in 1.0.0.
+                            } else {
                                 this.spawnParticle(radiationX, radiationY, "neutron", true);
                             }
                         }
@@ -1779,15 +2519,20 @@ export class Powders {
                             this.spawnParticle(particle.x, particle.y, "plasma", true);
                         } else if (random < 0.25) {
                             this.spawnParticle(particle.x, particle.y, "fallout", true);
+                        } else if (random < 0.3) {
+                            this.spawnParticle(particle.x, particle.y, "neutron", true);
                         } else {
                             this.spawnParticle(particle.x, particle.y, null, true);
                         }
                     }
                 } else {
+                    affectedParticles.push({ x: particle.x, y: particle.y, particle });
                     break; // Stop the ray if it hits a particle that can fully resist the explosion
                 }
+                affectedParticles.push({ x: particle.x, y: particle.y, particle });
             }
         }
+        return affectedParticles;
     }
 }
 
@@ -2695,6 +3440,7 @@ powderTypes.register("glass", {
     crushResult: "glass_shard", // When glass is crushed (like by a tool), it has a chance to turn into a glass shard (representing the sharp pieces created from breaking the glass).
     explosionResistance: 0.01 // Why would this ever work?
 });
+powderTypes.addToTag("glass", "transparent")
 powderTypes.register("oxygen", {
     name: "Oxygen",
     color: "#99d9ea",
@@ -3093,7 +3839,7 @@ powderTypes.register("fire", {
         const endColor = powderTypes.require("smoke").color; // Fire turns to smoke (black) as it cools
         const startTemp = powderTypes.require("fire").defaultTemp!;
         const endTemp = powderTypes.require("smoke").defaultTemp!;
-        const tempRatio = Math.max(0, Math.min(1, (particle.temp - endTemp) / (startTemp - endTemp)));
+        const tempRatio = 1 - Math.max(0, Math.min(1, (particle.temp - endTemp) / (startTemp - endTemp)));
         particle.deco = colorCurve(
             [
                 { offset: 0, color: startColor },
@@ -3265,13 +4011,22 @@ powderTypes.register("neutron", {
     colorVariation: 0.1,
     behavior: (game: Powders, particle: Particle) => {
         energyBehavior(game, particle);
+        if (particle.life > 0) {
+            particle.life--;
+        } else if (Math.random() < 0.5) { // 50% chance to decay into a proton after some time, representing the radioactive decay of neutrons into protons
+            game.spawnParticle(particle.x, particle.y, "proton", true);
+        }
     },
-    defaultTemp: 0,
-    tempTransferRate: 0,
+    onSpawn: (game: Powders, particle: Particle) => {
+        particle.life = Math.random() * 100 + 500; // Protons have a limited lifespan before they decay or vanish, representing the instability of free protons
+    },
+    defaultTemp: 22,
+    tempTransferRate: 0.75,
     state: "energy",
     category: "Radioactive",
-    weight: -1, // Energy has no weight.
+    weight: -0.99, // Neutrons are very light, similar to protons
     explosionResistance: 0.0, // You are gonna die to the neutron before the explosion 🥀
+    luminosity: true, // Neutrons emit light to make them more visible and dangerous
     reactions: [
         {
             with: "proton",
@@ -3287,12 +4042,21 @@ powderTypes.register("proton", {
     colorVariation: 0.1,
     behavior: (game: Powders, particle: Particle) => {
         energyBehavior(game, particle);
+        if (particle.life > 0) {
+            particle.life--;
+        } else if (Math.random() < 0.5) { // 50% chance to vanish after some time.
+            game.removeParticle(particle.x, particle.y);
+        }
     },
-    defaultTemp: 0,
-    tempTransferRate: 0,
+    onSpawn: (game: Powders, particle: Particle) => {
+        particle.life = Math.random() * 100 + 800; // Protons have a limited lifespan before they decay or vanish, representing the instability of free protons
+    },
+    defaultTemp: 22,
+    tempTransferRate: 0.75,
     state: "energy",
     category: "Radioactive",
-    weight: -1, // Energy has no weight.
+    luminosity: true, // Protons emit light to make them more visible and dangerous
+    weight: -0.99, // Energy has no weight.
     explosionResistance: 0.0 // You are gonna die to the proton before the explosion 🥀
 });
 powderTypes.addToTag("proton", "ai_kill")
@@ -3305,6 +4069,7 @@ powderTypes.register("hydrogen", {
     tempTransferRate: 0,
     state: "gas",
     category: "Gases",
+    luminosity: true, // Apply the effect to make it look more diffuse in the air, like hydrogen is invisible but still has a presence
     weight: -0.4, // Lightest known gas, so it is VERY light
     explosionResistance: 0.0, // Literally flammable gas
     reactions: [
@@ -3319,6 +4084,513 @@ powderTypes.register("hydrogen", {
     gasWeight: 0.4, // Rises with a 40% chance each tick
     reverseGravity: true,
 });
+function lerp(color1: string, color2: string, ratio: number) {
+    const c1 = parseInt(color1.slice(1), 16);
+    const c2 = parseInt(color2.slice(1), 16);
+    const r1 = (c1 >> 16) & 0xff;
+    const g1 = (c1 >> 8) & 0xff;
+    const b1 = c1 & 0xff;
+    const r2 = (c2 >> 16) & 0xff;
+    const g2 = (c2 >> 8) & 0xff;
+    const b2 = c2 & 0xff;
+    const r = Math.round(r1 + (r2 - r1) * ratio);
+    const g = Math.round(g1 + (g2 - g1) * ratio);
+    const b = Math.round(b1 + (b2 - b1) * ratio);
+    return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
+powderTypes.register("uranium", {
+    name: "Uranium",
+    color: "#6c8a3d",
+    colorVariation: 0.1,
+    behavior: (game, particle) => { // A radioactive material that can emit radiation particles
+        const myType = powderTypes.require("uranium");
+        falloutBehavior(game, particle, solidBehavior);
+        const start = 100;
+        const end = 600 - start;
+        const tempRatio = Math.max(0, Math.min(1, (particle.temp - start) / end));
+        particle.deco = colorCurve(
+            [
+                { offset: 0, color: myType.color },
+                { offset: 1, color: lerp(myType.color, "#00ffff", 0.5) },
+            ],
+            tempRatio + (Math.random() * 2 - 1) * 0.1 // Add some flickering to the color to make it look more dynamic and radioactive
+        );
+    },
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    state: "solid",
+    category: "Radioactive",
+    weight: 1.5,
+    explosionResistance: 0.1, // Slightly resistant to explosions, can withstand some damage
+    reactions: [
+        {
+            with: "neutron",
+            behavior: (game, particle, other) => {
+                game.spawnParticle(particle.x, particle.y, "neutron", true); // When uranium reacts with a neutron, it emits another neutron.
+                particle = game.getParticle(particle.x, particle.y)!; // Get the updated particle after spawning the neutron
+                particle.temp += 200; // Increase temperature to represent the energy released from the reaction
+                other.temp += 200; // Increase the other neutron's temperature as well to represent the energy transfer
+                const adjacentUranium = game.getAdjacentOfType(particle.x, particle.y, "uranium");
+                if (adjacentUranium) { // Heat up to create chain reactions
+                    adjacentUranium.temp += 150; // Heat up adjacent uranium to represent the energy transfer that can cause chain reactions
+                }
+                if (particle.temp > 500) { // If hot enough, it will explode
+                    game.explode(particle.x, particle.y, 20, 6, true, true); // Create an explosion with a radius of 20 and force of 6
+                }
+            },
+            result: "neutron",
+            secondResult: "neutron",
+            chance: 0.1 // When uranium reacts with a neutron, it has a chance to emit two neutrons to represent the process of nuclear fission
+        },
+        {
+            with: "proton",
+            result: "plutonium",
+            chance: 0.05, // When uranium reacts with a proton, it has a small chance to create plutonium to represent the process of neutron capture followed by beta decay that can occur in nuclear reactions
+            secondResult: "neutron"
+        }
+    ]
+});
+powderTypes.register("plutonium", {
+    name: "Plutonium",
+    color: "#4e7a1f",
+    colorVariation: 0.1,
+    behavior: (game, particle) => { // Similar to uranium but more unstable and dangerous
+        const myType = powderTypes.require("plutonium");
+        falloutBehavior(game, particle, solidBehavior);
+        const start = 50;
+        const end = 400 - start;
+        const tempRatio = Math.max(0, Math.min(1, (particle.temp - start) / end));
+        particle.deco = colorCurve(
+            [
+                { offset: 0, color: myType.color },
+                { offset: 1, color: lerp(myType.color, "#00ffff", 0.5) },
+            ],
+            tempRatio + (Math.random() * 2 - 1) * 0.1 // Add some flickering to the color to make it look more dynamic and radioactive
+        );
+    },
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    state: "solid",
+    category: "Radioactive",
+    weight: 2.0, // Heavier than uranium due to its higher density
+    explosionResistance: 0.05, // Less resistant to explosions than uranium due to its higher instability
+    reactions: [
+        {
+            with: "neutron",
+            behavior: (game, particle, other) => {
+                game.spawnParticle(particle.x, particle.y, "neutron", true); // When plutonium reacts with a neutron, it emits another neutron.
+                particle = game.getParticle(particle.x, particle.y)!; // Get the updated particle after spawning the neutron
+                particle.temp += 300;
+                other.temp += 300; // Increase the other neutron's temperature as well to represent the energy transfer
+                const adjacentPlutonium = game.getAdjacentOfType(particle.x, particle.y, "plutonium");
+                if (adjacentPlutonium) { // Heat up to create chain reactions
+                    adjacentPlutonium.temp += 250; // Heat up adjacent plutonium to represent the energy transfer that can cause chain reactions
+                }
+                if (particle.temp > 400) { // If hot enough, it will explode
+                    game.explode(particle.x, particle.y, 30, 8, true, true); // Create a larger explosion than uranium to represent the higher energy released from plutonium fission
+                }
+            },
+            result: "neutron",
+            secondResult: "neutron",
+            chance: 0.2 // When plutonium reacts with a neutron, it has a higher chance to emit two neutrons compared to uranium to represent its higher likelihood of causing chain reactions
+        },
+        {
+            with: "proton",
+            result: "americium",
+            chance: 0.1, // When plutonium reacts with a proton, it has a small chance to create americium to represent the process of neutron capture followed by beta decay that can occur in nuclear reactions
+            secondResult: "neutron"
+        }
+    ]
+});
+powderTypes.addToTag("plutonium", "ai_kill")
+powderTypes.register("americium", {
+    name: "Americium",
+    color: "#717d7d",
+    colorVariation: 0.1,
+    behavior: (game, particle) => { // Similar to plutonium but higher temperature needed and ionizes air around it to create plasma, Hard to detonate but powerful explosion
+        const myType = powderTypes.require("americium");
+        falloutBehavior(game, particle, solidBehavior);
+        const start = 100;
+        const end = 1500 - start;
+        const tempRatio = Math.max(0, Math.min(1, (particle.temp - start) / end));
+        particle.deco = colorCurve(
+            [
+                { offset: 0, color: myType.color },
+                { offset: 1, color: lerp(myType.color, "#00ffff", 0.5) },
+            ],
+            tempRatio + (Math.random() * 2 - 1) * 0.1 // Add some flickering to the color to make it look more dynamic and radioactive
+        );
+        if (particle.temp > 300) { // If hot enough, it ionizes the air around it to create plasma
+            const adjacent = game.getAdjacentParticles(particle.x, particle.y);
+            for (const adjacentParticle of adjacent) {
+                if (adjacentParticle.type === null && Math.random() < 0.1) { // 10% chance each tick to create plasma in adjacent empty spaces to represent the ionization of air
+                    game.spawnParticle(adjacentParticle.x, adjacentParticle.y, "plasma", false);
+                }
+            }
+        }
+    },
+    defaultTemp: 22,
+    tempTransferRate: 0.05,
+    state: "solid",
+    category: "Radioactive",
+    weight: 2.5, // Heavier than plutonium due to its higher density
+    explosionResistance: 0.02, // Less resistant to explosions than plutonium due to its higher instability
+    reactions: [
+        {
+            with: "neutron",
+            behavior: (game, particle, other) => {
+                game.spawnParticle(particle.x, particle.y, "neutron", true); // When americium reacts with a neutron, it emits another neutron.
+                particle = game.getParticle(particle.x, particle.y)!; // Get the updated particle after spawning the neutron
+                particle.temp += 400;
+                other.temp += 400;
+                const adjacentAmericium = game.getAdjacentOfType(particle.x, particle.y, "americium");
+                if (adjacentAmericium) { // Heat up to create chain reactions
+                    adjacentAmericium.temp += 350; // Heat up adjacent americium to represent the energy transfer that can cause chain reactions
+                }
+                if (particle.temp > 1500 && Math.random() < 0.1) { // If hot enough with 10% chance, it will explode
+                    game.explode(particle.x, particle.y, 50, 10, true, true); // Create a much larger explosion than plutonium to represent the much higher energy released from americium fission
+                }
+            },
+            result: "neutron",
+            secondResult: "neutron",
+            chance: 0.3 // When americium reacts with a neutron, it has an even higher chance to emit two neutrons compared to plutonium to represent its even higher likelihood of causing chain reactions
+        },
+        {
+            with: "proton",
+            result: "flash",
+            chance: 0.5, // When americium reacts with a proton, it has a high chance to create a flash of light to represent the intense energy released from the reaction
+        }
+    ]
+});
+// Set alpha of a color, If the color is RGB it converts to RGBA
+function setAlpha(color: string, alpha: number) {
+    if (color.startsWith("#")) {
+        const c = parseInt(color.slice(1), 16);
+        const r = (c >> 16) & 0xff;
+        const g = (c >> 8) & 0xff;
+        const b = c & 0xff;
+        return `rgba(${r}, ${g}, ${b}, ${alpha * 255})`;
+    } else if (color.startsWith("rgb(")) {
+        return color.replace("rgb(", "rgba(").replace(")", `, ${alpha * 255})`);
+    } else if (color.startsWith("rgba(")) {
+        return color.replace(/rgba\((\d+), (\d+), (\d+), [^)]+\)/, `rgba($1, $2, $3, ${alpha * 255})`);
+    }
+    return color; // Return the original color if it's in an unsupported format
+}
+function wavelengthEnergyToColor(wavelength: number, energy: number, useOutOfRange: boolean = false) {
+    // Convert wavelength and energy to HSV color, then convert to RGB
+    if (wavelength > 750 && useOutOfRange) {
+        return "#ff0000"; // Red for infrared
+    } else if (wavelength < 380 && useOutOfRange) {
+        return "#8b00ff"; // Violet for ultraviolet
+    }
+    if ((wavelength < 380 || wavelength > 750) && !useOutOfRange) {
+        return setAlpha("#000000", 0); // Fully transparent for out of range wavelengths if not using the out of range colors
+    }
+    const hue = 360 - (((wavelength - 380) / (750 - 380)) * 360); // Map wavelength to hue (380-750nm maps to 0-360 degrees)
+    const value = Math.min(1, energy / 1000); // Map energy to value (0-1000 maps to 0-1)
+    const saturation = Math.max(0, Math.min(1, 1 - ((energy - 1000) / 1000))); // Map energy to saturation (1000-2000 maps to 0-1)
+    // Convert HSV to RGB
+    const c = value * saturation;
+    const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+    const m = value - c;
+    let r = 0, g = 0, b = 0;
+    if (hue >= 0 && hue < 60) {
+        r = c; g = x; b = 0;
+    }
+    else if (hue >= 60 && hue < 120) {
+        r = x; g = c; b = 0;
+    }
+    else if (hue >= 120 && hue < 180) {
+        r = 0; g = c; b = x;
+    }
+    else if (hue >= 180 && hue < 240) {
+        r = 0; g = x; b = c;
+    }
+    else if (hue >= 240 && hue < 300) {
+        r = x; g = 0; b = c;
+    }
+    else {
+        r = c; g = 0; b = x;
+    }
+    r = Math.round((r + m) * 255);
+    g = Math.round((g + m) * 255);
+    b = Math.round((b + m) * 255);
+    return `rgb(${r}, ${g}, ${b})`;
+}
+function colorToWavelengthEnergy(color: string): { wavelength: number, energy: number } {
+    // Convert RGB color to wavelength and energy, using most valid CSS colors as a reference for the conversion
+    // Dont assume saturation of 1
+    if (color.startsWith("#")) {
+        const c = parseInt(color.slice(1), 16);
+        const r = (c >> 16) & 0xff;
+        const g = (c >> 8) & 0xff;
+        const b = c & 0xff;
+        color = `rgb(${r}, ${g}, ${b})`;
+    } else if (color.startsWith("rgba(")) {
+        const match = color.match(/rgba\((\d+), (\d+), (\d+), [^)]+\)/);
+        if (match) {
+            const r = parseInt(match[1]!);
+            const g = parseInt(match[2]!);
+            const b = parseInt(match[3]!);
+            color = `rgb(${r}, ${g}, ${b})`;
+        }
+    }
+    if (!color.startsWith("rgb(")) {
+        return { wavelength: 0, energy: 0 }; // Return default values for unsupported color formats
+    }
+    const match = color.match(/rgb\((\d+), (\d+), (\d+)\)/);
+    if (!match) {
+        return { wavelength: 0, energy: 0 }; // Return default values if the regex fails for some reason
+    }
+    const r = parseInt(match[1]!);
+    const g = parseInt(match[2]!);
+    const b = parseInt(match[3]!);
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let hue = 0;
+    if (max === min) {
+        hue = 0;
+    }
+    else if (max === r) {
+        hue = (60 * ((g - b) / (max - min)) + 360) % 360;
+    }
+    else if (max === g) {
+        hue = (60 * ((b - r) / (max - min)) + 120) % 360;
+    }
+    else if (max === b) {
+        hue = (60 * ((r - g) / (max - min)) + 240) % 360;
+    }
+    const saturation = max === 0 ? 0 : (max - min) / max;
+    const value = max / 255;
+    const wavelength = ((360 - hue) / 360) * (750 - 380) + 380;
+    let energy = Math.min(2, Math.max(0, value + saturation)) * 1000; // Map value back to energy (0-1 maps to 0-1000)
+    energy = Math.max(0, Math.min(2000, energy)); // Clamp energy to a maximum of 2000 to avoid extreme values from very bright colors with low saturation
+    return { wavelength, energy };
+}
+function energyToTemp(energy: number) {
+    return energy / 10; // Map energy to temperature (0-1000 maps to 0-100C, 1001-2000 maps to 101-200C)
+}
+powderTypes.register("supernova", {
+    name: "Supernova",
+    color: "#ffccff",
+    colorVariation: 0.2,
+    behavior: (game, particle) => {
+        solidBehavior(game, particle);
+        if (particle.life > 0) {
+            particle.life--;
+            return;
+        }
+        const affected = game.explode(particle.x, particle.y, 200, 100, true, true); // Create a massive explosion to represent the supernova
+        for (const affectedParticle of affected) {
+            if (affectedParticle === null) continue;
+            if (affectedParticle.particle === null) continue;
+            affectedParticle.particle.temp += 50000000; // Heat up affected particles to represent the intense energy released from the supernova explosion
+        }
+    },
+    onSpawn: (game, particle) => {
+        particle.life = Math.random() * 20; // Supernova exists for a short time before exploding to represent the brief but intense nature of supernovae
+    },
+    defaultTemp: 20000000, // Extremely hot to represent the intense energy of a supernova
+    tempTransferRate: 1.0, // Transfers a lot of heat to represent the intense energy of a supernova
+    luminosity: true,
+    state: "energy",
+    category: "Special",
+    weight: 9999, // Cannot be swapped, same as sun
+    explosionResistance: 9999.0 // Completely resistant to explosions to represent the finality of a supernova explosion
+});
+powderTypes.register("sun", {
+    name: "Sun",
+    color: "#ffff96",
+    colorVariation: 0.1,
+    behavior: (game, particle) => {
+        solidBehavior(game, particle);
+        const sunType = powderTypes.require("sun");
+        const startColor = sunType.color;
+        const endColor = "#00ffd5";
+        const startTemp = 1000; // Brown dwarf.
+        const endTemp = 10000000; // 10M
+        const midpoint = sunType.defaultTemp!; // 5500C, the average surface temperature of the sun, used as a reference point for the color change to represent the sun's lifecycle from a main sequence star to a red giant and eventually to a supernova
+        const supernovaTemp = 5000000; // When the sun reaches this temperature, it will become a supernova
+
+        // Calculate tempRatio using midpoint as 0.5
+        let tempRatio: number;
+        if (particle.temp < midpoint) {
+            tempRatio = Math.max(0, Math.min(0.5, (particle.temp - startTemp) / (midpoint - startTemp) * 0.5));
+        } else {
+            tempRatio = Math.min(1, 0.5 + (particle.temp - midpoint) / (endTemp - midpoint) * 0.5);
+        }
+
+        particle.deco = colorCurve(
+            [
+                { offset: 0, color: "#660000" },        // Brown dwarf
+                { offset: 0.067, color: "#990000" },    // Red dwarf
+                { offset: 0.133, color: "#dd6600" },    // Orange dwarf
+                { offset: 0.2, color: "#ffff00" },      // Yellow dwarf
+                { offset: 0.267, color: "#ffffff" },    // White dwarf
+                { offset: 0.333, color: "#aabbff" },    // Blue dwarf
+                { offset: 0.5, color: startColor },     // Main sequence (Sun at 5500K)
+                { offset: 0.6, color: "#ffff96" },      // Yellow giant
+                { offset: 0.7, color: "#ffaa00" },      // Orange giant
+                { offset: 0.8, color: "#ff4400" },      // Red giant
+                { offset: 0.9, color: "#ffffd4" },      // Red supergiant
+                { offset: 0.95, color: "#00ffff" },      // Blue supergiant
+                { offset: 1, color: endColor },         // Supernova remnant
+            ],
+            tempRatio
+        );
+        if (particle.temp >= supernovaTemp) {
+            const spawned = game.spawnParticle(particle.x, particle.y, "supernova", true);
+            if (spawned) return;
+        }
+        if (particle.temp < startTemp && particle.temp > 0) {
+            // No longer star, become hydrogen cloud
+            const spawned = game.spawnParticle(particle.x, particle.y, "hydrogen", true);
+            if (spawned) return;
+        }
+        // Spawn photons (same color as star)
+        const wavelengthEnergy = colorToWavelengthEnergy(particle.deco);
+        const wavelength = wavelengthEnergy.wavelength;
+        const energy = wavelengthEnergy.energy;
+        const photonTemp = energyToTemp(energy);
+        let randX = n101random(true);
+        let randY = n101random(true);
+        // Ensure photon never spawns on the sun's own cell to avoid replacing it
+        if (randX === 0 && randY === 0) randX = 1;
+        const photon = game.spawnParticle(particle.x + randX, particle.y + randY, "photon")
+        if (photon) {
+            photon.bvs1 = wavelength; // Set the photon's wavelength to match the star's color to represent the light emitted by the star
+            photon.temp = photonTemp; // Set the photon's temperature based on the star's energy to represent the intensity of the light emitted by the star
+        }
+    }, // A super hot and luminous particle that can represent the sun or other stars, It can transfer a lot of heat and cause extreme reactions when it interacts with other particles, but it is completely immobile and cannot be moved or affected by any forces to represent the stability of stars in space
+    defaultTemp: 5500, // Average surface temperature of the sun in Celsius
+    noTransfer: true, // Does not transfer heat to represent the fact that stars primarily transfer energy through radiation rather than conduction or convection
+    tempTransferRate: 0.0, // No heat, to keep temperature
+    luminosity: true,
+    state: "energy",
+    category: "Special",
+    weight: 9999, // Cannot be swapped, same as sun
+    explosionResistance: 9999.0 // Completely resistant to explosions to represent the stability of stars in space
+});
+powderTypes.register("flash", { // Turns itself into a photon and spawns more in a circular radius
+    name: "Flash",
+    color: "#ffffff",
+    colorVariation: 0.1,
+    behavior: (game, particle) => {
+        solidBehavior(game, particle);
+        game.removeParticle(particle.x, particle.y); // Remove the flash particle immediately to represent the instantaneous nature of a flash of light
+        const radius = 10;
+        const angles = 16;
+        const angleIncr = 360 / angles;
+        for (let i = 0; i < angles; i++) { // Spawn photons in a circular radius around the flash to represent the spreading of light
+            const angle = i * angleIncr;
+            const rayResult = game.raycast(particle.x, particle.y, angle, radius);
+            if (rayResult) {
+                const photons = game.drawParticleLine(particle.x, particle.y, rayResult.x, rayResult.y, "photon");
+                for (const photon of photons) {
+                    photon.bvs1 = 470; // Set to an electric blue
+                    photon.temp = 500; // High-energy photon
+                    const dirX = Math.round(Math.cos(angle * (Math.PI / 180)));
+                    const dirY = Math.round(Math.sin(angle * (Math.PI / 180)));
+                    photon.directionX = dirX;
+                    photon.directionY = dirY;
+                }
+            }
+        }
+        game.spawnParticle(particle.x, particle.y, "photon", true); // Spawn a photon at the center of the flash to represent the initial burst of light
+    },
+    defaultTemp: 1000,
+    tempTransferRate: 0,
+    luminosity: true,
+    state: "energy",
+    category: "Special",
+    weight: 9999, // Cannot be swapped, same as sun
+    explosionResistance: 9999.0 // Completely resistant to explosions to represent the instantaneous nature of a flash of light
+});
+function isValidPhotonColorProfile(data: unknown): data is { wavelength: number; energy: number }[] {
+    if (!Array.isArray(data)) return false;
+
+    return data.every(
+        (item) =>
+            item !== null &&
+            typeof item === "object" &&
+            typeof (item as { wavelength: number; energy: number }).wavelength === "number" &&
+            typeof (item as { wavelength: number; energy: number }).energy === "number"
+    );
+}
+
+function interpolatePhotonProfile(profile: { wavelength: number; energy: number }[], targetWavelength: number): number {
+    if (!profile || profile.length === 0) return 1;
+    if (profile.length === 1) return profile[0]!.energy;
+
+    // Linear interpolation between points for memory efficiency
+    for (let i = 0; i < profile.length - 1; i++) {
+        const p1 = profile[i]!;
+        const p2 = profile[i + 1]!;
+        if (targetWavelength >= p1.wavelength && targetWavelength <= p2.wavelength) {
+            const ratio = (targetWavelength - p1.wavelength) / (p2.wavelength - p1.wavelength);
+            return p1.energy + (p2.energy - p1.energy) * ratio;
+        }
+    }
+
+    // Return closest endpoint if outside range
+    return Math.abs(targetWavelength - profile[0]!.wavelength) < Math.abs(targetWavelength - profile[profile.length - 1]!.wavelength)
+        ? profile[0]!.energy
+        : profile[profile.length - 1]!.energy;
+}
+
+powderTypes.register("photon", {
+    name: "Photon",
+    color: "#ffffff",
+    colorVariation: 0.1,
+    behavior: (game, particle) => {
+        const onBounce = (game: Powders, particle: Particle, bouncedOn: Particle | null) => {
+            if (!bouncedOn) return;
+            const extraPhotonAdditions = particle.any1; // Allows most colors to be shown with photons, stores wavelength-energy pairs for spectral profiles
+            let profileEnergy = 1;
+            if (isValidPhotonColorProfile(extraPhotonAdditions)) {
+                const wavelength = particle.bvs1 || 550;
+                profileEnergy = interpolatePhotonProfile(extraPhotonAdditions, wavelength);
+            }
+            if (bouncedOn.type === "photon") return; // Photons dont interact with each other, they just pass through each other
+            const bouncedOnType = bouncedOn.type ? powderTypes.require(bouncedOn.type) : null;
+            if (!bouncedOnType) return;
+            if (bouncedOnType.noTransfer !== undefined && bouncedOnType.noTransfer) return;
+            const bouncedOnColor = bouncedOn.getColor();
+            const bouncedOnWavelengthEnergy = colorToWavelengthEnergy(bouncedOnColor);
+            const bouncedOnWavelength = bouncedOnWavelengthEnergy.wavelength;
+            const bouncedOnEnergy = bouncedOnWavelengthEnergy.energy;
+            const energyTransfer = (energyToTemp(bouncedOnEnergy * profileEnergy) - particle.temp) * 0.5; // Transfer energy with profile adjustment
+            // Adjust the photon's wavelength and energy based on the bounced on particle's properties to represent the change in the photon's energy and color due to the interaction
+            if (bouncedOnEnergy > 0) {
+                particle.bvs1 += (bouncedOnWavelength - particle.bvs1) * 0.5; // Change wavelength based on the bounced on particle's color
+                particle.temp += energyTransfer; // Increase temperature based on the energy transfer from the bounced on particle
+            } else {
+                particle.temp -= energyTransfer; // Decrease temperature if the bounced on particle has no energy to transfer, representing the loss of energy from the photon due to the interaction
+            }
+        };
+        energyBehavior(game, particle, onBounce);
+        const wavelength = particle.bvs1 || 550; // bvs1 is wavelength
+        let profileEnergy = 1;
+        if (isValidPhotonColorProfile(particle.any1)) {
+            profileEnergy = interpolatePhotonProfile(particle.any1, wavelength);
+        }
+        const energy = particle.temp * 10 * profileEnergy; // Map temperature to energy (0-1000), adjusted by spectral profile
+        particle.deco = wavelengthEnergyToColor(wavelength, energy, true); // Get color based on wavelength and energy, using out of range colors for invisible photons to make them faintly visible as infrared or ultraviolet light
+    }, // A particle of light that can transfer energy but has no mass, It can be emitted by certain reactions and can also cause reactions when it interacts with other particles to represent the effects of radiation and light in the game
+    onSpawn: (game, particle) => {
+        particle.bvs1 = 380 + Math.random() * 370; // Assign a random wavelength between 380nm and 750nm to represent different colors of light
+        particle.temp = Math.random() * 200; // Assign random energy level
+    },
+    defaultTemp: 100,
+    tempTransferRate: 0.0, // Transferred on bounce
+    luminosity: true,
+    state: "energy",
+    category: "Energy",
+    weight: -1, // Energy has no weight.
+    explosionResistance: 0.0, // Its literally light.
+});
+powderTypes.addToTag("americium", "ai_kill");
 // Vanilla tools (From version BETA)
 toolTypes.register("heat", {
     name: "Heat Tool",
@@ -3355,6 +4627,19 @@ toolTypes.register("exsuperheat", {
         const particles = game.getParticlesInSquare(x - halfBrushSize, y - halfBrushSize, game.brushSize, game.brushSize);
         for (const particle of particles) {
             particle.temp += game.intensifyBrush ? 750 : 375; // Increase temperature by 375 or 750`` degrees Celsius per tick
+        }
+    },
+    onTick: true,
+});
+toolTypes.register("solarsuperheat", {
+    name: "Solar Superheat Tool",
+    color: "#fff700",
+    action: (game, x, y) => {
+        if (!game.mouseLeftDown) return;
+        const halfBrushSize = Math.floor(game.brushSize / 2);
+        const particles = game.getParticlesInSquare(x - halfBrushSize, y - halfBrushSize, game.brushSize, game.brushSize);
+        for (const particle of particles) {
+            particle.temp += game.intensifyBrush ? 500000 : 250000; // Increase temperature by 5000 or 2500 degrees Celsius per tick
         }
     },
     onTick: true,
@@ -3454,6 +4739,22 @@ toolTypes.register("erase", {
     action: (game, x, y) => {
         if (!game.mouseLeftDown) return;
         game.drawParticleLine(game.lastMouseX, game.lastMouseY, x, y, null, true, game.brushSize); // Draw with null type to erase particles
+    },
+    onTick: false
+});
+// v1.0.0 tool additions
+toolTypes.register("random", {
+    name: "Randomize Tool",
+    color: "#ff00ff",
+    action: (game, x, y) => {
+        if (!game.mouseLeftDown) return;
+        const particles = game.getParticlesInSquare(x - game.brushSize, y - game.brushSize, (game.brushSize * 2) + 1, (game.brushSize * 2) + 1);
+        for (const particle of particles) {
+            const randomType = powderTypes.randomFromTag("any"); // Get a random type from the "any" tag, which includes all types, to create a random particle
+            if (randomType) {
+                game.spawnParticle(particle.x, particle.y, powderTypes.getId(randomType)!, true);
+            }
+        }
     },
     onTick: false
 });
